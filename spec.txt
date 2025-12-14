@@ -1,0 +1,695 @@
+
+# Project spec — **Trust & Safety Dashboard (C++ backend + Qt frontend)**
+
+## 1 — Project summary (one-liner)
+
+A polished Qt-based desktop app (C++) that scrapes subreddit posts/comments, runs AI-detection (DeskLib `desklib/ai-text-detector-v1.01`) and image/text moderation (Hive / TheHive.ai), presents a realtime moderation dashboard with “railguard” blocking and human-review flow, and exports reports (PDF/PNG/CSV).
+
+Key APIs:
+
+* DeskLib AI text detector (Hugging Face model repo). ([Hugging Face][1])
+* Hive / TheHive.ai moderation endpoints (visual + text moderation). ([Documentation | Hive][2])
+  Call via Hugging Face Inference API / endpoints (HTTP). ([Hugging Face][3])
+
+---
+
+# 2 — High-level features
+
+1. **Subreddit scraper** (configurable subreddits, time window) — respects Reddit API/ToS and rate limits.
+2. **Text AI detector**: send text to desklib/ai-text-detector-v1.01 inference API, get score/confidence (human vs AI). ([Hugging Face][1])
+3. **Image moderation** (visual): send images to Hive visual moderation, get class labels + confidences (NSFW, violence, hate, drugs, attributes). ([Documentation | Hive][2])
+4. **Text moderation** (Hive text moderation): get categories and confidence for offensive/hate/abuse. ([Documentation | Hive][4])
+5. **Railguard** (real-time blocking): incoming content is auto-flagged/blocked based on configurable thresholds; displays inline preview + allow human override.
+6. **Dashboard**: sortable table, filters, visual badges, charts (counts over time), human review queue, item detail panel.
+7. **Automated actions**: e.g., auto-hide, escalate via webhook, send to review queue.
+8. **Export**: PDF report (per session), image snapshots, CSV/JSON logs.
+9. **OOP, testable, modular**: clear interfaces so components can be swapped (e.g., local model vs cloud).
+10. **Secure cred storage**: encrypted config for API keys (local keyring or file with OS-specific encryption).
+11. **Performance**: async network calls, thread-pool for inference, batching where allowed.
+
+---
+
+# 3 — Top-level architecture (modules)
+
+* `ui` — Qt frontend (C++ + QML optional), Dashboard window, Review dialogs, Settings.
+* `core` — business logic: Orchestrator, ModerationEngine, RuleEngine.
+* `network` — HTTP clients, rate-limiter, retry logic.
+* `detectors` — `TextDetector` (HuggingFace), `ImageModerator` (Hive), `TextModerator` (Hive).
+* `scraper` — RedditScraper (OAuth or Pushshift fallback) with polite rate-limits.
+* `storage` — local DB (SQLite) for logs, config, caches.
+* `export` — PDF/PNG/CSV exporter (libharu, cairo/Qt print).
+* `utils` — JSON, logging, threading helpers.
+
+Data passes from Scraper → Core → Detectors (async) → RuleEngine → UI/Storage/Exporter.
+
+---
+
+# 4 — OOP Design / Key classes (interfaces + responsibilities)
+
+### Core interfaces (C++ style pseudo-headers)
+
+```cpp
+// network/HttpClient.h
+class HttpClient {
+public:
+  virtual ~HttpClient() = default;
+  virtual HttpResponse post(const HttpRequest& req) = 0;
+  virtual HttpResponse get(const std::string& url, const HttpHeaders& headers) = 0;
+};
+
+// detectors/TextDetector.h
+struct TextDetectResult { double ai_score; std::string label; double confidence; };
+class TextDetector {
+public:
+  virtual ~TextDetector() = default;
+  virtual TextDetectResult analyze(const std::string& text) = 0;
+};
+
+// detectors/ImageModerator.h
+struct VisualModerationResult { std::map<std::string,double> labels; };
+class ImageModerator {
+public:
+  virtual ~ImageModerator() = default;
+  virtual VisualModerationResult analyzeImage(const std::vector<uint8_t>& imageBytes, const std::string& mime) = 0;
+};
+
+// core/ModerationEngine.h
+class ModerationEngine {
+public:
+  void processItem(ContentItem item); // orchestrates detectors, applies rules, persists & notifies UI
+};
+```
+
+### Concrete implementations
+
+* `CurlHttpClient : HttpClient` — libcurl-based async wrapper.
+* `HFTextDetector : TextDetector` — uses Hugging Face inference endpoint (model `desklib/ai-text-detector-v1.01`). ([Hugging Face][1])
+* `HiveImageModerator : ImageModerator` & `HiveTextModerator` — use Hive API. ([Documentation | Hive][2])
+* `RedditScraper` — uses Reddit API (OAuth) or Pushshift (if acceptable) + retry/backoff.
+
+---
+
+# 5 — API contracts & expected JSON
+
+### Hugging Face (Inference API) — typical POST
+
+Request:
+
+```http
+POST https://api-inference.huggingface.co/models/desklib/ai-text-detector-v1.01
+Authorization: Bearer <HF_API_TOKEN>
+Content-Type: application/json
+
+{"inputs": "Text to classify", "parameters": {"some_param": "value"}}
+```
+
+Response (example):
+
+```json
+{
+  "label": "ai_generated",
+  "score": 0.87
+}
+```
+
+(Use the HF Inference docs for exact payloads) ([Hugging Face][3])
+
+### Hive Visual Moderation
+
+Request:
+
+```http
+POST https://api.hive.ai/moderation/visual
+Authorization: Bearer <HIVE_KEY>
+Content-Type: multipart/form-data
+file=@post.jpg
+```
+
+Response (example):
+
+```json
+{
+  "predictions": [
+    {"label":"sexual", "confidence":0.92},
+    {"label":"violence", "confidence":0.01}
+  ],
+  "meta": {...}
+}
+```
+
+(See Hive docs for exact fields). ([Documentation | Hive][2])
+
+### Hive Text Moderation
+
+Request:
+
+```http
+POST https://api.hive.ai/moderation/text
+Authorization: Bearer <HIVE_KEY>
+Content-Type: application/json
+
+{"text": "offensive comment here"}
+```
+
+Response:
+
+```json
+{
+  "labels": [{"label":"abusive", "confidence":0.78}, ...]
+}
+```
+
+([Documentation | Hive][4])
+
+---
+
+# 6 — Rule engine / thresholds
+
+* Configurable thresholds (global + per-class): e.g., `ai_score > 0.8` => flag; `nsfw > 0.9` => auto-block.
+* Per-subreddit override & escalation policies.
+* Rule representation: JSON rules file evaluated by RuleEngine (supports AND/OR, time window, history-aware rules).
+
+---
+
+# 7 — UI spec (Qt, C++)
+
+### Tech choices
+
+* **Qt 6** (Qt Widgets + optional QML for animated panels). Use C++ for app logic, but QML can be used for flashy UI (recommended).
+* Use `QAbstractTableModel` for dashboard table; use `QChart` (Qt Charts) or integrate with QCustomPlot for charts.
+
+### Main windows
+
+1. **Top toolbar**: Project name, Connect status (API keys), Scrape controls (start/stop), global filters, search.
+2. **Left pane**: Filters + quick stats (counts: flagged, reviewed, blocked, severity distribution).
+3. **Center**: Stream table (timestamp, author, subreddit, snippet, type (img/text), ai_score, hive_labels, status, actions). Row color = severity.
+4. **Right**: Detail panel (full text, image preview, detector outputs, history, action buttons: `Block`, `Escalate`, `Mark Safe`, `Export`).
+5. **Bottom**: Live activity / log / rate-limit meter & thread-pool status.
+6. **Popup**: Review dialog with side-by-side classifier confidences and override buttons.
+
+### Railguard UX
+
+* When an item arrives and matches block rules, the UI shows an animated railguard overlay (modal or notification card) with a **big red badge** and "Auto-blocked" info + “Review” button. Provide keyboard shortcuts (R = review, U = un-block).
+
+### Accessibility & visuals
+
+* Use modern dark theme, soft shadows, 2xl rounded cards, clear typography. Use iconography for labels.
+
+---
+
+# JSON-Based Database Specification
+
+**(Append-only JSONL storage for Trust & Safety System)**
+
+## 1. Design philosophy
+
+* Storage is **file-based**, not a traditional DB.
+* Data is stored as **append-only JSON Lines (`.jsonl`)**.
+* Each line = **one immutable record**.
+* All storage access is abstracted behind interfaces.
+* Storage must be **thread-safe**, **crash-safe**, and **human-readable**.
+* SQLite or any other DB must be swappable later without touching core logic.
+
+---
+
+## 2. File format choice
+
+**JSON Lines (JSONL)**
+
+* UTF-8 encoded text
+* One valid JSON object per line
+* No trailing commas
+* No multi-line objects
+
+Example:
+
+```json
+{"id":"abc123","type":"text","status":"blocked","ai_score":0.91}
+{"id":"abc124","type":"image","status":"allowed","nsfw":0.02}
+```
+
+---
+
+## 3. Directory structure (mandatory)
+
+```
+data/
+ ├── content.jsonl          # all scraped + analyzed content
+ ├── actions.jsonl          # human moderation actions
+ ├── cache/
+ │    ├── text_cache.jsonl  # hash → AI detection result
+ │    └── image_cache.jsonl # hash → image moderation result
+ ├── logs/
+ │    └── system.log
+ └── exports/
+      ├── reports/
+      └── csv/
+```
+
+---
+
+## 4. Core data models (schemas)
+
+### 4.1 ContentItem (content.jsonl)
+
+```json
+{
+  "id": "string (uuid)",
+  "timestamp": "ISO-8601 string",
+  "source": "reddit",
+  "subreddit": "string",
+  "author": "string | null",
+  "content_type": "text | image",
+  "text": "string | null",
+  "image_path": "string | null",
+
+  "ai_detection": {
+    "model": "desklib/ai-text-detector-v1.01",
+    "ai_score": 0.0,
+    "label": "ai_generated | human",
+    "confidence": 0.0
+  },
+
+  "moderation": {
+    "provider": "hive",
+    "labels": {
+      "sexual": 0.0,
+      "violence": 0.0,
+      "hate": 0.0,
+      "drugs": 0.0
+    }
+  },
+
+  "decision": {
+    "auto_action": "allow | block | review",
+    "rule_id": "string",
+    "threshold_triggered": true
+  }
+}
+```
+
+---
+
+### 4.2 HumanAction (actions.jsonl)
+
+```json
+{
+  "action_id": "string (uuid)",
+  "content_id": "string",
+  "timestamp": "ISO-8601 string",
+  "reviewer": "local_user",
+  "previous_status": "blocked",
+  "new_status": "allowed",
+  "reason": "manual override",
+  "notes": "optional string"
+}
+```
+
+---
+
+### 4.3 Cache entry (cache/*.jsonl)
+
+```json
+{
+  "hash": "sha256 string",
+  "provider": "huggingface | hive",
+  "result": { "any valid JSON object" },
+  "timestamp": "ISO-8601 string"
+}
+```
+
+---
+
+## 5. Storage abstraction (OOP requirement)
+
+### Interface (MANDATORY)
+
+```cpp
+class Storage {
+public:
+  virtual void saveContent(const ContentItem& item) = 0;
+  virtual void saveAction(const HumanAction& action) = 0;
+
+  virtual std::vector<ContentItem> loadAllContent() = 0;
+  virtual std::vector<HumanAction> loadAllActions() = 0;
+
+  virtual ~Storage() = default;
+};
+```
+
+---
+
+### Concrete implementation
+
+```cpp
+class JsonlStorage : public Storage {
+private:
+  std::mutex writeMutex;
+  std::string contentFile;
+  std::string actionFile;
+
+public:
+  explicit JsonlStorage(const std::string& basePath);
+
+  void saveContent(const ContentItem& item) override;
+  void saveAction(const HumanAction& action) override;
+
+  std::vector<ContentItem> loadAllContent() override;
+  std::vector<HumanAction> loadAllActions() override;
+};
+```
+
+---
+
+## 6. Write rules (strict)
+
+* Files are **append-only**
+* No in-place modification
+* Writes must:
+
+  * acquire mutex
+  * append exactly one line
+  * flush immediately
+* Reads must tolerate partial/corrupt lines (skip invalid JSON)
+
+---
+
+## 7. Thread safety
+
+* All write operations must be guarded by a mutex
+* Read operations may be parallel but must handle incomplete last line
+* Storage must be safe to call from:
+
+  * scraper thread
+  * inference threads
+  * UI thread (read-only)
+
+---
+
+## 8. Indexing & lookup strategy
+
+No traditional indexes.
+
+Instead:
+
+* Load content into memory at app startup
+* Maintain in-memory maps:
+
+  * `content_id → ContentItem`
+  * `hash → cached_result`
+* Periodically flush new entries to disk
+
+This is acceptable for:
+
+* ≤ 1–2 million records
+* single-user desktop apps
+
+---
+
+## 9. Error handling
+
+* Corrupt lines must be:
+
+  * logged
+  * skipped
+  * not crash the app
+* Disk full / permission errors must:
+
+  * propagate up
+  * surface clearly in UI
+
+---
+
+## 10. Export compatibility
+
+Storage format must allow:
+
+* PDF report generation
+* CSV export
+* JSON export
+
+No schema changes allowed without version bump.
+
+---
+
+## 11. Versioning (future-proofing)
+
+Add to every record:
+
+```json
+"schema_version": 1
+```
+
+Future versions may introduce:
+
+* schema migration tool
+* backward-compatible readers
+
+---
+
+## 12. Explicit non-goals
+
+* No SQL
+* No joins
+* No transactions
+* No multi-user locking
+
+These are **intentional** design choices.
+
+---
+
+## 13. Acceptance criteria (Cursor must meet)
+
+* App runs fully using JSONL storage only
+* No SQLite, no external DB
+* Storage code isolated in `/storage`
+* Can swap in SQLite by implementing the same interface
+* Data survives crash mid-run
+* Human-readable data files
+* Clean separation of concerns
+
+---
+
+## 14. How to justify this in review / viva
+
+> “The system uses an append-only JSONL store behind a Storage abstraction.
+> This provides transparency, debuggability, and sufficient performance for a single-user moderation pipeline, while keeping the architecture database-agnostic.”
+
+That sentence alone wins arguments.
+
+---
+
+# 10 — Security & keys
+
+* Store API tokens securely (OS keyring recommended). If file-based, encrypt them using AES with a local key derived from user passphrase. Do not hardcode tokens.
+* Support environment variable override for CI.
+
+---
+
+# 11 — Error handling & observability
+
+* Central logging (spdlog or Qt logging) with log rotation.
+* Exponential backoff + retry for transient network errors.
+* Health dashboard showing last successful calls, error rates, and rate-limit stats.
+
+---
+
+# 13 — Build & dependencies (CMake)
+
+* **Language**: C++17 or C++20.
+* **Main dependencies**:
+
+  * Qt 6 (Widgets, Charts, QML optional)
+  * libcurl (HTTP client) or use QtNetwork (QNetworkAccessManager) — **recommend** QtNetwork for native integration with Qt event loop.
+  * nlohmann/json (JSON parsing)
+  * SQLite (Qt has builtin)
+  * spdlog (optional)
+  * GoogleTest (tests)
+  * OpenSSL (for TLS)
+  * libharu or Qt printing for PDF export
+* **CMake** skeleton:
+
+```cmake
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network Charts)
+add_executable(ts_dashboard ...)
+target_link_libraries(ts_dashboard Qt6::Widgets Qt6::Network Qt6::Charts)
+```
+
+---
+
+# 14 — Sample C++ snippets
+
+> **Note:** Cursor can use QtNetwork (preferred) or libcurl. Below is a *libcurl + nlohmann/json* example for HF inference so Cursor has concrete code to adapt.
+
+### HF text detector (libcurl, synchronous example)
+
+```cpp
+// sample: hf_infer.cpp (requires libcurl + nlohmann/json)
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <iostream>
+
+static size_t write_cb(void* contents, size_t size, size_t nmemb, void* userp) {
+  ((std::string*)userp)->append((char*)contents, size * nmemb);
+  return size * nmemb;
+}
+
+nlohmann::json call_hf_model(const std::string& token,
+                             const std::string& model_id,
+                             const std::string& text) {
+  std::string url = "https://api-inference.huggingface.co/models/" + model_id;
+  CURL* curl = curl_easy_init();
+  std::string readBuffer;
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, ("Authorization: Bearer " + token).c_str());
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+
+  nlohmann::json payload = { {"inputs", text} };
+
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.dump().c_str());
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
+  CURLcode res = curl_easy_perform(curl);
+  if (res != CURLE_OK) {
+    curl_easy_cleanup(curl);
+    throw std::runtime_error("curl error");
+  }
+  curl_easy_cleanup(curl);
+  return nlohmann::json::parse(readBuffer);
+}
+
+// usage:
+// auto j = call_hf_model(getenv("HF_TOKEN"), "desklib/ai-text-detector-v1.01", "some text");
+// read j["label"], j["score"]
+```
+
+Caveat: use asynchronous approach in production and add rate-limiter and retries. See Hugging Face Inference docs for accepted parameters and endpoints. ([Hugging Face][3])
+
+### Hive visual moderation (multipart POST with libcurl)
+
+```cpp
+// send file as multipart/form-data; receive JSON - similar structure to above
+// Refer to Hive docs for exact endpoint and fields. :contentReference[oaicite:12]{index=12}
+```
+
+---
+
+# 15 — Scraper notes (Reddit)
+
+* Use **Reddit official API** with OAuth; respect request rate-limits and user privacy. If you use Pushshift (historical), include fallback and note possible ToS differences.
+* Store only minimal metadata locally (id, text, author, timestamp, subreddit, urls) and optionally cache images separately.
+
+---
+
+# 16 — Export formats & example flows
+
+* **PDF**: session summary (top flagged items, counts, timestamps), include inline images & classifier outputs.
+* **Image snapshots**: save preview as PNG (Qt can `grabWidget()` or render).
+* **CSV/JSON** logs: one record per content item with all detector outputs and final action.
+
+---
+
+# 17 — Dev tasks / milestones for Cursor (deliverables + acceptance)
+
+### Milestone A — Project scaffolding (Cursor)
+
+* Create repo skeleton with CMake + modules (ui, core, network, detectors, scraper, storage, export).
+* Provide basic Qt main window with dummy table and QAbstractTableModel.
+* Unit tests project configured.
+
+**Acceptance**: Project builds on Linux and Windows; window opens and shows placeholder rows.
+
+### Milestone B — Network + Clients
+
+* Implement `HttpClient` (libcurl or QtNetwork) with token-auth and retry/backoff.
+* Implement `HFTextDetector` wrapper that calls the HF endpoint. Use config-based HF token. ([Hugging Face][3])
+
+**Acceptance**: Unit test with mocked HTTP returns; recorded output matches expected JSON parsing.
+
+### Milestone C — Hive Clients & RuleEngine
+
+* Implement `HiveImageModerator` and `HiveTextModerator` with proper JSON parsing. ([Documentation | Hive][2])
+* Implement `RuleEngine` that can read JSON rules.
+
+**Acceptance**: Given sample input, engine returns correct action (block/escalate/allow).
+
+### Milestone D — Scraper & Orchestration
+
+* RedditScraper with scheduler; pipeline connecting items to ModerationEngine.
+* Store results to SQLite.
+
+**Acceptance**: Scrape sample subreddit, run moderation pipeline, entries persisted.
+
+### Milestone E — UI & Railguard
+
+* Implement Dashboard, Detail view, Review dialog, real-time railguard overlay for auto-blocked items.
+* Implement keyboard shortcuts & action audit log.
+
+**Acceptance**: Human reviewer can override a block; audit entry recorded.
+
+### Milestone F — Exports, tests & packaging
+
+* Export PDF and CSV, package app for target OS, CI pipeline running tests.
+
+**Acceptance**: Sample run creates a PDF of flagged items; CI passes tests.
+
+---
+
+# 18 — Acceptance criteria (production-ready)
+
+* Modular OOP codebase with documented interfaces for detectors (TextDetector, ImageModerator).
+* UI responsive with non-blocking inference actions.
+* System respects API rate-limits; has retry/backoff.
+* All sensitive tokens are not checked in; stored securely.
+* Export features working and human-review workflow complete.
+* Basic unit & integration tests and cross-platform build instructions.
+
+---
+
+# 19 — Risk & compliance notes
+
+* **API access**: Hive (TheHive.ai) typically requires account & access keys; you must request access for Visual Moderation / Dashboard features. ([Hive][5])
+* **Privacy**: Scraping Reddit and storing PII must follow Reddit rules and privacy laws (GDPR). Keep retention policies and anonymization if needed.
+* **Costs**: HF inference and Hive requests may incur costs—add quotas and monitoring.
+
+---
+
+# 20 — Implementation tips & best practices (for Cursor)
+
+* Prefer **QtNetwork (QNetworkAccessManager)** so HTTP integrates with Qt event loop and signals/slots. Use `QNetworkRequest` + `QNetworkReply`.
+* Use `QImage` / `QPixmap` caching for images.
+* Implement a `ResultCache` keyed by content hash (SHA-256) to avoid duplicate API calls.
+* Add an “offline review only” mode for low-cost manual moderation.
+* Provide a settings UI to tune thresholds and concurrency limits.
+
+---
+
+# 21 — Useful references (docs used)
+
+* DeskLib AI text detector model page (Hugging Face): desklib/ai-text-detector-v1.01. ([Hugging Face][1])
+* Hugging Face Inference API & endpoints (how to send inputs, API tokens). ([Hugging Face][3])
+* Hive Visual Moderation docs. ([Documentation | Hive][2])
+* Hive Text Moderation docs. ([Documentation | Hive][4])
+
+---
+
+# 22 — What to hand Cursor (exact spec text to paste)
+
+Below is a short checklist you can paste directly to Cursor:
+
+> Build a C++ (C++17/20) + Qt 6 desktop Trust & Safety application.
+>
+> * Project must be properly OOP and modular: core, network, detectors, scraper, storage, ui, export.
+> * Integrate **Hugging Face** model `desklib/ai-text-detector-v1.01` for AI-text detection via HF Inference API. (Auth via HF token). ([Hugging Face][1])
+> * Integrate **Hive/TheHive.ai** Visual & Text Moderation APIs for image & text classification; implement HTTP client, parse JSON, support confidence thresholds. ([Documentation | Hive][2])
+> * Implement RedditScraper (OAuth), store only necessary metadata in SQLite, respect rate-limits.
+> * UI in Qt: dashboard table (QAbstractTableModel), detail panel, railguard overlay for auto-blocked content, human-review dialogs, export buttons. Use QThreadPool/QtConcurrent for non-blocking operations.
+> * Provide rule engine with JSON config for thresholds & actions.
+> * Store API keys securely. Add retry/backoff and rate-limiter token bucket.
+> * Provide tests: unit for RuleEngine, mocked HTTP for detector clients, UI smoke tests.
+> * Provide build via CMake; target Linux/macOS/Windows. Include README with setup (how to provide API keys) and screenshots.
+> * Deliverables: compiled app + source + tests + sample config + export example + short developer README describing endpoints used.

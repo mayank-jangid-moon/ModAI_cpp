@@ -1,0 +1,41 @@
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.dll
+*.user
+*.pro.user
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+!CMakeLists.txt
+data/
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Qt
+*.qmlc
+*.jsc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.pro.user
+
+# macOS
+.DS_Store
+*.app
+
+# Windows
+*.obj
+*.pdb
+*.ilk
+*.exp
+

@@ -1,0 +1,118 @@
+#include "network/QtHttpClient.h"
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QHttpMultiPart>
+#include <QHttpPart>
+#include <QEventLoop>
+#include <QTimer>
+#include <QByteArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include "utils/Logger.h"
+
+namespace ModAI {
+
+QtHttpClient::QtHttpClient(QObject* parent)
+    : QObject(parent)
+    , networkManager_(std::make_unique<QNetworkAccessManager>(this))
+    , timeoutMs_(30000) {
+}
+
+QNetworkRequest QtHttpClient::createRequest(const std::string& url, const std::map<std::string, std::string>& headers) {
+    QNetworkRequest request(QUrl(QString::fromStdString(url)));
+    
+    for (const auto& [key, value] : headers) {
+        request.setRawHeader(QByteArray::fromStdString(key), QByteArray::fromStdString(value));
+    }
+    
+    return request;
+}
+
+HttpResponse QtHttpClient::executeRequest(QNetworkReply* reply) {
+    HttpResponse response;
+    
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    timer.setInterval(timeoutMs_);
+    
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    
+    timer.start();
+    loop.exec();
+    
+    if (timer.isActive()) {
+        timer.stop();
+        response.statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        response.body = reply->readAll().toStdString();
+        response.success = (reply->error() == QNetworkReply::NoError);
+        
+        if (!response.success) {
+            response.errorMessage = reply->errorString().toStdString();
+        }
+        
+        // Read headers
+        auto headers = reply->rawHeaderPairs();
+        for (const auto& header : headers) {
+            response.headers[header.first.toStdString()] = header.second.toStdString();
+        }
+    } else {
+        // Timeout
+        response.success = false;
+        response.errorMessage = "Request timeout";
+        reply->abort();
+    }
+    
+    reply->deleteLater();
+    return response;
+}
+
+HttpResponse QtHttpClient::post(const HttpRequest& req) {
+    QNetworkRequest request = createRequest(req.url, req.headers);
+    
+    QNetworkReply* reply = nullptr;
+    
+    if (req.contentType == "multipart/form-data" && !req.binaryData.empty()) {
+        QHttpMultiPart* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+        
+        QHttpPart filePart;
+        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/octet-stream"));
+        filePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
+                          QVariant("form-data; name=\"file\"; filename=\"image.jpg\""));
+        filePart.setBody(QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), 
+                                   req.binaryData.size()));
+        
+        multiPart->append(filePart);
+        
+        request.setRawHeader("Content-Type", "multipart/form-data; boundary=" + multiPart->boundary());
+        reply = networkManager_->post(request, multiPart);
+        multiPart->setParent(reply);
+    } else {
+        if (!req.contentType.empty()) {
+            request.setHeader(QNetworkRequest::ContentTypeHeader, QByteArray::fromStdString(req.contentType));
+        } else {
+            request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+        }
+        
+        QByteArray data;
+        if (!req.body.empty()) {
+            data = QByteArray::fromStdString(req.body);
+        } else if (!req.binaryData.empty()) {
+            data = QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), req.binaryData.size());
+        }
+        
+        reply = networkManager_->post(request, data);
+    }
+    
+    return executeRequest(reply);
+}
+
+HttpResponse QtHttpClient::get(const std::string& url, const std::map<std::string, std::string>& headers) {
+    QNetworkRequest request = createRequest(url, headers);
+    QNetworkReply* reply = networkManager_->get(request);
+    return executeRequest(reply);
+}
+
+} // namespace ModAI
+
