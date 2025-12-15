@@ -110,11 +110,18 @@ HttpResponse QtHttpClient::post(const HttpRequest& req) {
         
         response = executeRequest(reply);
         
-        if (response.success && response.statusCode >= 200 && response.statusCode < 500) {
+        // Success - return immediately
+        if (response.success) {
             return response;
         }
         
-        if (response.statusCode == 429 || response.statusCode >= 500 || !response.success) {
+        // Permanent client errors (except 429) - don't retry
+        if (response.statusCode >= 400 && response.statusCode < 500 && response.statusCode != 429) {
+            return response;
+        }
+        
+        // Only retry on rate limits (429) or server errors (5xx)
+        if (response.statusCode == 429 || response.statusCode >= 500) {
             retries++;
             if (retries <= maxRetries_) {
                 int delay = retryDelayMs_ * (1 << (retries - 1));
@@ -123,6 +130,8 @@ HttpResponse QtHttpClient::post(const HttpRequest& req) {
                 QEventLoop loop;
                 QTimer::singleShot(delay, &loop, &QEventLoop::quit);
                 loop.exec();
+            } else {
+                return response;
             }
         } else {
             return response;
@@ -141,11 +150,18 @@ HttpResponse QtHttpClient::get(const std::string& url, const std::map<std::strin
         
         response = executeRequest(reply);
         
-        if (response.success && response.statusCode >= 200 && response.statusCode < 500) {
+        // Success - return immediately
+        if (response.success) {
             return response;
         }
         
-        if (response.statusCode == 429 || response.statusCode >= 500 || !response.success) {
+        // Permanent client errors (except 429) - don't retry
+        if (response.statusCode >= 400 && response.statusCode < 500 && response.statusCode != 429) {
+            return response;
+        }
+        
+        // Only retry on rate limits (429) or server errors (5xx)
+        if (response.statusCode == 429 || response.statusCode >= 500) {
             retries++;
             if (retries <= maxRetries_) {
                 int delay = retryDelayMs_ * (1 << (retries - 1));
@@ -154,6 +170,8 @@ HttpResponse QtHttpClient::get(const std::string& url, const std::map<std::strin
                 QEventLoop loop;
                 QTimer::singleShot(delay, &loop, &QEventLoop::quit);
                 loop.exec();
+            } else {
+                return response;
             }
         } else {
             return response;
