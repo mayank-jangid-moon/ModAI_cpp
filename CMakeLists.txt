@@ -112,6 +112,8 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/reports)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/csv)
 
 # Tests (optional)
-enable_testing()
-add_subdirectory(tests OPTIONAL)
+if(EXISTS "${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
