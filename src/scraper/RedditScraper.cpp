@@ -45,7 +45,7 @@ void RedditScraper::authenticate() {
     // Basic auth: clientId:clientSecret base64 encoded
     std::string auth = clientId_ + ":" + clientSecret_;
     QByteArray authBytes = QByteArray::fromStdString(auth);
-    req.headers["Authorization"] = "Basic " + QByteArray::toBase64(authBytes).toStdString();
+    req.headers["Authorization"] = "Basic " + authBytes.toBase64().toStdString();
     
     req.body = "grant_type=client_credentials";
     
