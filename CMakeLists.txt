@@ -30,6 +30,7 @@ set(HEADERS
     include/core/ModerationEngine.h
     include/core/RuleEngine.h
     include/core/ContentItem.h
+    include/core/ResultCache.h
     include/network/HttpClient.h
     include/network/QtHttpClient.h
     include/network/RateLimiter.h
@@ -47,6 +48,7 @@ set(HEADERS
     include/utils/Crypto.h
     include/ui/MainWindow.h
     include/ui/DashboardModel.h
+    include/ui/DashboardProxyModel.h
     include/ui/DetailPanel.h
     include/ui/RailguardOverlay.h
     include/ui/ReviewDialog.h
@@ -56,6 +58,7 @@ set(SOURCES
     src/main.cpp
     src/core/ModerationEngine.cpp
     src/core/RuleEngine.cpp
+    src/core/ResultCache.cpp
     src/core/ContentItem.cpp
     src/network/QtHttpClient.cpp
     src/network/RateLimiter.cpp
@@ -68,6 +71,7 @@ set(SOURCES
     src/utils/Logger.cpp
     src/utils/Crypto.cpp
     src/ui/MainWindow.cpp
+    src/ui/DashboardProxyModel.cpp
     src/ui/DashboardModel.cpp
     src/ui/DetailPanel.cpp
     src/ui/RailguardOverlay.cpp
