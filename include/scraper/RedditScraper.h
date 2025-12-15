@@ -22,6 +22,7 @@ private:
     std::string clientSecret_;
     std::string userAgent_;
     std::string accessToken_;
+    std::string storagePath_;
     std::unique_ptr<RateLimiter> rateLimiter_;
     QTimer* scrapeTimer_;
     
@@ -32,13 +33,17 @@ private:
 
     void authenticate();
     std::vector<ContentItem> fetchPosts(const std::string& subreddit);
+    std::vector<ContentItem> fetchComments(const std::string& subreddit);
     ContentItem parsePost(const nlohmann::json& postJson);
+    ContentItem parseComment(const nlohmann::json& commentJson);
+    std::string downloadImage(const std::string& url);
 
 public:
     RedditScraper(std::unique_ptr<HttpClient> httpClient,
                   const std::string& clientId,
                   const std::string& clientSecret,
                   const std::string& userAgent,
+                  const std::string& storagePath,
                   QObject* parent = nullptr);
     
     void setSubreddits(const std::vector<std::string>& subreddits);

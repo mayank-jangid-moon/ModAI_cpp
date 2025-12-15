@@ -69,49 +69,97 @@ HttpResponse QtHttpClient::executeRequest(QNetworkReply* reply) {
 }
 
 HttpResponse QtHttpClient::post(const HttpRequest& req) {
-    QNetworkRequest request = createRequest(req.url, req.headers);
+    HttpResponse response;
+    int retries = 0;
     
-    QNetworkReply* reply = nullptr;
-    
-    if (req.contentType == "multipart/form-data" && !req.binaryData.empty()) {
-        QHttpMultiPart* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    while (retries <= maxRetries_) {
+        QNetworkRequest request = createRequest(req.url, req.headers);
+        QNetworkReply* reply = nullptr;
         
-        QHttpPart filePart;
-        filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/octet-stream"));
-        filePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
-                          QVariant("form-data; name=\"file\"; filename=\"image.jpg\""));
-        filePart.setBody(QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), 
-                                   req.binaryData.size()));
-        
-        multiPart->append(filePart);
-        
-        request.setRawHeader("Content-Type", "multipart/form-data; boundary=" + multiPart->boundary());
-        reply = networkManager_->post(request, multiPart);
-        multiPart->setParent(reply);
-    } else {
-        if (!req.contentType.empty()) {
-            request.setHeader(QNetworkRequest::ContentTypeHeader, QByteArray::fromStdString(req.contentType));
+        if (req.contentType == "multipart/form-data" && !req.binaryData.empty()) {
+            QHttpMultiPart* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+            
+            QHttpPart filePart;
+            filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/octet-stream"));
+            filePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
+                              QVariant("form-data; name=\"file\"; filename=\"image.jpg\""));
+            filePart.setBody(QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), 
+                                       req.binaryData.size()));
+            
+            multiPart->append(filePart);
+            
+            request.setRawHeader("Content-Type", "multipart/form-data; boundary=" + multiPart->boundary());
+            reply = networkManager_->post(request, multiPart);
+            multiPart->setParent(reply);
         } else {
-            request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+            if (!req.contentType.empty()) {
+                request.setHeader(QNetworkRequest::ContentTypeHeader, QByteArray::fromStdString(req.contentType));
+            } else {
+                request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+            }
+            
+            QByteArray data;
+            if (!req.body.empty()) {
+                data = QByteArray::fromStdString(req.body);
+            } else if (!req.binaryData.empty()) {
+                data = QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), req.binaryData.size());
+            }
+            
+            reply = networkManager_->post(request, data);
         }
         
-        QByteArray data;
-        if (!req.body.empty()) {
-            data = QByteArray::fromStdString(req.body);
-        } else if (!req.binaryData.empty()) {
-            data = QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), req.binaryData.size());
+        response = executeRequest(reply);
+        
+        if (response.success && response.statusCode >= 200 && response.statusCode < 500) {
+            return response;
         }
         
-        reply = networkManager_->post(request, data);
+        if (response.statusCode == 429 || response.statusCode >= 500 || !response.success) {
+            retries++;
+            if (retries <= maxRetries_) {
+                int delay = retryDelayMs_ * (1 << (retries - 1));
+                Logger::warn("Request failed (" + std::to_string(response.statusCode) + "), retrying in " + std::to_string(delay) + "ms. Attempt " + std::to_string(retries));
+                
+                QEventLoop loop;
+                QTimer::singleShot(delay, &loop, &QEventLoop::quit);
+                loop.exec();
+            }
+        } else {
+            return response;
+        }
     }
-    
-    return executeRequest(reply);
+    return response;
 }
 
 HttpResponse QtHttpClient::get(const std::string& url, const std::map<std::string, std::string>& headers) {
-    QNetworkRequest request = createRequest(url, headers);
-    QNetworkReply* reply = networkManager_->get(request);
-    return executeRequest(reply);
+    HttpResponse response;
+    int retries = 0;
+    
+    while (retries <= maxRetries_) {
+        QNetworkRequest request = createRequest(url, headers);
+        QNetworkReply* reply = networkManager_->get(request);
+        
+        response = executeRequest(reply);
+        
+        if (response.success && response.statusCode >= 200 && response.statusCode < 500) {
+            return response;
+        }
+        
+        if (response.statusCode == 429 || response.statusCode >= 500 || !response.success) {
+            retries++;
+            if (retries <= maxRetries_) {
+                int delay = retryDelayMs_ * (1 << (retries - 1));
+                Logger::warn("Request failed (" + std::to_string(response.statusCode) + "), retrying in " + std::to_string(delay) + "ms. Attempt " + std::to_string(retries));
+                
+                QEventLoop loop;
+                QTimer::singleShot(delay, &loop, &QEventLoop::quit);
+                loop.exec();
+            }
+        } else {
+            return response;
+        }
+    }
+    return response;
 }
 
 } // namespace ModAI

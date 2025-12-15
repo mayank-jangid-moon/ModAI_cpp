@@ -14,6 +14,8 @@ class QtHttpClient : public QObject, public HttpClient {
 private:
     std::unique_ptr<QNetworkAccessManager> networkManager_;
     int timeoutMs_;
+    int maxRetries_ = 3;
+    int retryDelayMs_ = 1000;
 
 public:
     explicit QtHttpClient(QObject* parent = nullptr);
@@ -23,6 +25,7 @@ public:
     HttpResponse get(const std::string& url, const std::map<std::string, std::string>& headers = {}) override;
     
     void setTimeout(int milliseconds) { timeoutMs_ = milliseconds; }
+    void setRetries(int maxRetries, int delayMs) { maxRetries_ = maxRetries; retryDelayMs_ = delayMs; }
 
 private:
     HttpResponse executeRequest(QNetworkReply* reply);

@@ -18,16 +18,16 @@ TextModerationResult HiveTextModerator::analyzeText(const std::string& text) {
     
     rateLimiter_->waitIfNeeded();
     
-    std::string url = "https://api.thehive.ai/api/v1/moderation/text";
+    std::string url = "https://api.thehive.ai/api/v2/task/sync";
     
     HttpRequest req;
     req.url = url;
     req.method = "POST";
-    req.headers["Authorization"] = "Bearer " + apiKey_;
+    req.headers["Authorization"] = "Token " + apiKey_;
     req.headers["Content-Type"] = "application/json";
     
     nlohmann::json payload;
-    payload["text"] = text;
+    payload["text_data"] = text;
     req.body = payload.dump();
     
     try {

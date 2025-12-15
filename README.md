@@ -4,14 +4,15 @@ A polished Qt-based desktop application (C++) that scrapes subreddit posts/comme
 
 ## Features
 
-- **Subreddit Scraper**: Configurable subreddit scraping with Reddit OAuth API support
+- **Subreddit Scraper**: Configurable subreddit scraping with Reddit OAuth API support. Fetches both posts and comments.
 - **AI Text Detection**: Uses Hugging Face model `desklib/ai-text-detector-v1.01` to detect AI-generated content
-- **Image Moderation**: Hive/TheHive.ai visual moderation for NSFW, violence, hate, and drugs detection
+- **Image Moderation**: Hive/TheHive.ai visual moderation for NSFW, violence, hate, and drugs detection. Automatically downloads and processes images.
 - **Text Moderation**: Hive text moderation for offensive/hate/abuse detection
 - **Railguard**: Real-time blocking with animated overlay notifications
-- **Dashboard**: Sortable table with filters, visual badges, and detail panels
+- **Dashboard**: Sortable table with search, status filters, visual badges, and detail panels
 - **Rule Engine**: JSON-based configurable thresholds and actions
-- **Export**: PDF, CSV, and JSON export functionality
+- **Export**: Rich PDF reports with images, CSV, and JSON export functionality
+- **Performance**: Result caching to minimize API calls and structured retries for network resilience
 - **Secure Storage**: Encrypted API key storage with environment variable support
 
 ## Architecture

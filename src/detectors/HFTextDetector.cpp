@@ -10,7 +10,7 @@ HFTextDetector::HFTextDetector(std::unique_ptr<HttpClient> httpClient,
                                const std::string& apiToken)
     : httpClient_(std::move(httpClient))
     , apiToken_(apiToken)
-    , modelId_("desklib/ai-text-detector-v1.01")
+    , modelId_("roberta-base-openai-detector")
     , rateLimiter_(std::make_unique<RateLimiter>(30, std::chrono::seconds(60))) {
 }
 

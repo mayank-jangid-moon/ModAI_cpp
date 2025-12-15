@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 #include "core/ModerationEngine.h"
 #include "core/RuleEngine.h"
+#include "core/ResultCache.h"
 #include "detectors/HFTextDetector.h"
 #include "detectors/HiveImageModerator.h"
 #include "detectors/HiveTextModerator.h"
@@ -63,10 +64,28 @@ MainWindow::MainWindow(QWidget* parent)
     // Create rule engine
     auto ruleEngine = std::make_unique<RuleEngine>();
     std::string rulesPath = dataPath + "/rules.json";
+    
+    // Copy default rules if not exists
+    if (!QFile::exists(QString::fromStdString(rulesPath))) {
+        QFile defaultRules("../config/rules.json");
+        if (!defaultRules.exists()) {
+            // Try alternative path
+            defaultRules.setFileName("config/rules.json");
+        }
+        if (defaultRules.exists()) {
+            defaultRules.copy(QString::fromStdString(rulesPath));
+        }
+    }
+    
     ruleEngine->loadRulesFromJson(rulesPath);
     
     // Create storage
     auto storage = std::make_unique<JsonlStorage>(dataPath);
+    
+    // Create cache
+    std::string cachePath = dataPath + "/cache/results.jsonl";
+    QDir().mkpath(QString::fromStdString(dataPath + "/cache"));
+    auto cache = std::make_unique<ResultCache>(cachePath);
     
     // Create moderation engine
     moderationEngine_ = std::make_unique<ModerationEngine>(
@@ -74,7 +93,8 @@ MainWindow::MainWindow(QWidget* parent)
         std::move(imageModerator),
         std::move(textModerator),
         std::move(ruleEngine),
-        std::move(storage)
+        std::move(storage),
+        std::move(cache)
     );
     
     moderationEngine_->setOnItemProcessed([this](const ContentItem& item) {
@@ -89,7 +109,8 @@ MainWindow::MainWindow(QWidget* parent)
         std::make_unique<QtHttpClient>(this),
         redditClientId,
         redditClientSecret,
-        "ModAI/1.0 by /u/yourusername"
+        "ModAI/1.0 by /u/yourusername",
+        dataPath
     );
     
     scraper_->setOnItemScraped([this](const ContentItem& item) {
@@ -138,7 +159,12 @@ void MainWindow::setupUI() {
     // Table
     tableView_ = new QTableView;
     model_ = new DashboardModel(this);
-    tableView_->setModel(model_);
+    
+    // Proxy Model
+    proxyModel_ = new DashboardProxyModel(this);
+    proxyModel_->setSourceModel(model_);
+    
+    tableView_->setModel(proxyModel_);
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection);
     tableView_->horizontalHeader()->setStretchLastSection(true);
@@ -173,6 +199,9 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onReviewRequested);
     connect(railguardOverlay_, &RailguardOverlay::overrideAction,
             this, &MainWindow::onOverrideAction);
+            
+    connect(searchInput_, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
+    connect(filterCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onFilterChanged);
 }
 
 void MainWindow::loadExistingData() {
@@ -238,6 +267,21 @@ void MainWindow::onOverrideAction(const std::string& itemId, const std::string& 
     // Update item status and save action
     // Implementation would update storage and model
     Logger::info("Override action: " + itemId + " -> " + newStatus);
+}
+
+void MainWindow::onSearchTextChanged(const QString& text) {
+    proxyModel_->setSearchFilter(text);
+}
+
+void MainWindow::onFilterChanged(int index) {
+    QString text = filterCombo_->itemText(index);
+    QString status;
+    if (text == "Blocked") status = "block";
+    else if (text == "Review") status = "review";
+    else if (text == "Allowed") status = "allow";
+    else status = ""; // All Statuses
+    
+    proxyModel_->setStatusFilter(status);
 }
 
 } // namespace ModAI

@@ -23,23 +23,26 @@ This is a complete implementation of the Trust & Safety Dashboard as specified i
 3. **Network Layer**
    - `QtHttpClient` using QtNetwork (QNetworkAccessManager)
    - `RateLimiter` for API rate limiting
-   - Retry logic and error handling
+   - Structured retry logic with exponential backoff for robust error handling
    - Support for JSON and multipart/form-data requests
 
-4. **Detectors**
+4. **Detectors & Caching**
    - `HFTextDetector`: Hugging Face AI text detection (desklib/ai-text-detector-v1.01)
    - `HiveImageModerator`: Hive visual moderation API
    - `HiveTextModerator`: Hive text moderation API
+   - `ResultCache`: Caches detection results by content hash to reduce API costs and latency
    - All implement abstract interfaces for testability
 
 5. **Core Logic**
-   - `ModerationEngine`: Orchestrates detection pipeline
+   - `ModerationEngine`: Orchestrates detection pipeline, including image downloading and caching
    - `RuleEngine`: JSON-based rule evaluation with condition parsing
    - `ContentItem`: Data model with JSON serialization
    - Support for AND/OR conditions, thresholds, per-subreddit rules
 
 6. **Scraper**
    - `RedditScraper`: Reddit OAuth API integration
+   - Fetches both subreddit posts and comments
+   - Automatic image downloading for visual moderation
    - Rate limiting (60 requests/minute)
    - Periodic scraping with QTimer
    - Parses posts and comments into ContentItem objects
@@ -47,12 +50,13 @@ This is a complete implementation of the Trust & Safety Dashboard as specified i
 7. **UI Components**
    - `MainWindow`: Main application window with splitter layout
    - `DashboardModel`: QAbstractTableModel for content table
-   - `DetailPanel`: Right-side detail view with action buttons
+   - `DashboardProxyModel`: Filtering and search functionality
+   - `DetailPanel`: Right-side detail view with action buttons and image previews
    - `RailguardOverlay`: Animated overlay for auto-blocked content
    - `ReviewDialog`: Dialog for human review workflow
 
 8. **Export Functionality**
-   - PDF export (text-based, extensible to QPrinter)
+   - PDF export using `QPdfWriter` with rich layout and image support
    - CSV export with all fields
    - JSON export with full item data
 
@@ -87,17 +91,18 @@ RedditScraper → ContentItem → ModerationEngine →
 
 ## Key Features Implemented
 
-1. Subreddit scraping with Reddit OAuth
+1. Subreddit scraping (posts & comments) with Reddit OAuth
 2. AI text detection via Hugging Face
-3. Image moderation via Hive API
+3. Image moderation via Hive API (with auto-download)
 4. Text moderation via Hive API
 5. Rule-based auto-blocking
 6. Railguard overlay for blocked content
-7. Dashboard table with filtering
+7. Dashboard table with filtering and search
 8. Detail panel with full content view
 9. Human review workflow
-10. Export to PDF/CSV/JSON
+10. Rich Export to PDF/CSV/JSON
 11. Secure API key storage
+12. Result caching and robust network retries
 12. JSONL append-only storage
 13. Rate limiting and retry logic
 14. Comprehensive logging

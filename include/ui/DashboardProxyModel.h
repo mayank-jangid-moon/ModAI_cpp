@@ -1,0 +1,24 @@
+#pragma once
+
+#include <QSortFilterProxyModel>
+
+namespace ModAI {
+
+class DashboardProxyModel : public QSortFilterProxyModel {
+    Q_OBJECT
+
+public:
+    explicit DashboardProxyModel(QObject* parent = nullptr);
+
+    void setStatusFilter(const QString& status);
+    void setSearchFilter(const QString& text);
+
+protected:
+    bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;
+
+private:
+    QString statusFilter_;
+    QString searchFilter_;
+};
+
+} // namespace ModAI

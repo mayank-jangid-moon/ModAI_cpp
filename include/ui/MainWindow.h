@@ -16,7 +16,9 @@
 #include "ui/DashboardModel.h"
 #include "ui/DetailPanel.h"
 #include "ui/RailguardOverlay.h"
-#include <memory>
+#include <QSortFilterProxyModel>
+#include <QComboBox>
+#include "ui/DashboardProxyModel.h"
 
 namespace ModAI {
 
@@ -26,12 +28,15 @@ class MainWindow : public QMainWindow {
 private:
     QTableView* tableView_;
     DashboardModel* model_;
+    DashboardProxyModel* proxyModel_;
     DetailPanel* detailPanel_;
     RailguardOverlay* railguardOverlay_;
     
     QPushButton* startButton_;
     QPushButton* stopButton_;
     QLineEdit* subredditInput_;
+    QLineEdit* searchInput_;
+    QComboBox* filterCombo_;
     QLabel* statusLabel_;
     
     std::unique_ptr<ModerationEngine> moderationEngine_;
@@ -50,6 +55,8 @@ private slots:
     void onTableSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onReviewRequested(const std::string& itemId);
     void onOverrideAction(const std::string& itemId, const std::string& newStatus);
+    void onSearchTextChanged(const QString& text);
+    void onFilterChanged(int index);
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);

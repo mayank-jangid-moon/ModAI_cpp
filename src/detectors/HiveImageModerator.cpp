@@ -24,7 +24,7 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
     HttpRequest req;
     req.url = url;
     req.method = "POST";
-    req.headers["Authorization"] = "Bearer " + apiKey_;
+    req.headers["Authorization"] = "Token " + apiKey_;
     req.contentType = "multipart/form-data";
     req.binaryData = imageBytes;
     
