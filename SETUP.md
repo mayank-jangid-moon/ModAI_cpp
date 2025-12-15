@@ -123,6 +123,18 @@ sudo apt-get install qt6-base-dev qt6-charts-dev qt6-network-dev
 sudo apt-get install libssl-dev nlohmann-json3-dev
 ```
 
+#### Linux (Arch/Manjaro)
+
+```bash
+# Run the installation script
+./scripts/install_dependencies.sh
+```
+
+Or manually:
+```bash
+sudo pacman -Sy --noconfirm base-devel cmake qt6-base qt6-declarative qt6-charts openssl nlohmann-json
+```
+
 #### Linux (Fedora/RHEL/CentOS)
 
 ```bash

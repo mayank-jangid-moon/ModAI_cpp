@@ -8,7 +8,7 @@ This directory contains helper scripts for building and running ModAI.
 
 - **`install_dependencies.sh`** (macOS/Linux)
   - Automatically installs all required dependencies
-  - Supports Homebrew (macOS) and apt-get/yum (Linux)
+  - Supports Homebrew (macOS) and pacman/apt-get/yum (Linux)
   - Verifies installations after completion
 
 - **`install_dependencies.ps1`** (Windows)

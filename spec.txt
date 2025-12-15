@@ -1,4 +1,3 @@
-
 # Project spec — **Trust & Safety Dashboard (C++ backend + Qt frontend)**
 
 ## 1 — Project summary (one-liner)

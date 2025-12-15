@@ -77,7 +77,7 @@ $env:MODAI_REDDIT_CLIENT_SECRET = "your_secret"
 - **nlohmann/json** (JSON parsing)
 - **OpenSSL** (for TLS/HTTPS)
 
-**See [SETUP.md](SETUP.md) for detailed installation instructions.**
+**See [SETUP.md](SETUP.md) for detailed installation instructions (including Arch).**
 
 ## Building
 

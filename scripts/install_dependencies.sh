@@ -31,12 +31,14 @@ if [ "$OS" == "macOS" ]; then
     fi
     PKG_MGR="brew"
 elif [ "$OS" == "Linux" ]; then
-    if command -v apt-get &> /dev/null; then
+    if command -v pacman &> /dev/null; then
+        PKG_MGR="pacman"
+    elif command -v apt-get &> /dev/null; then
         PKG_MGR="apt"
     elif command -v yum &> /dev/null; then
         PKG_MGR="yum"
     else
-        echo "Error: No supported package manager found (apt-get or yum)"
+        echo "Error: No supported package manager found (pacman, apt-get, or yum)"
         exit 1
     fi
 fi
@@ -145,6 +147,51 @@ install_linux_apt() {
     echo "Linux (apt) dependencies installed!"
 }
 
+# Function to install on Linux (pacman - Arch/Manjaro)
+install_linux_pacman() {
+    echo "Installing dependencies on Linux (pacman)..."
+    echo ""
+
+    # Update package list
+    echo "Updating package list..."
+    sudo pacman -Sy --noconfirm
+
+    # Install base-devel
+    echo "Installing base-devel..."
+    sudo pacman -S --noconfirm base-devel
+
+    # Install CMake
+    if ! command_exists cmake; then
+        echo "Installing CMake..."
+        sudo pacman -S --noconfirm cmake
+    else
+        echo "CMake already installed: $(cmake --version | head -n1)"
+    fi
+
+    # Install Qt6 (base + network + charts)
+    echo "Installing Qt6..."
+    sudo pacman -S --noconfirm qt6-base qt6-declarative qt6-charts
+
+    # Install nlohmann/json
+    if ! pacman -Qi nlohmann-json &>/dev/null; then
+        echo "Installing nlohmann/json..."
+        sudo pacman -S --noconfirm nlohmann-json
+    else
+        echo "nlohmann/json already installed"
+    fi
+
+    # Install OpenSSL
+    if ! command_exists openssl; then
+        echo "Installing OpenSSL..."
+        sudo pacman -S --noconfirm openssl
+    else
+        echo "OpenSSL already installed: $(openssl version)"
+    fi
+
+    echo ""
+    echo "Linux (pacman) dependencies installed!"
+}
+
 # Function to install on Linux (yum)
 install_linux_yum() {
     echo "Installing dependencies on Linux (yum)..."
@@ -190,6 +237,8 @@ echo ""
 
 if [ "$OS" == "macOS" ]; then
     install_macos
+elif [ "$OS" == "Linux" ] && [ "$PKG_MGR" == "pacman" ]; then
+    install_linux_pacman
 elif [ "$OS" == "Linux" ] && [ "$PKG_MGR" == "apt" ]; then
     install_linux_apt
 elif [ "$OS" == "Linux" ] && [ "$PKG_MGR" == "yum" ]; then
