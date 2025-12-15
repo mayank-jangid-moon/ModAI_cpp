@@ -26,11 +26,13 @@ TextModerationResult HiveTextModerator::analyzeText(const std::string& text) {
     
     rateLimiter_->waitIfNeeded();
     
+    // Hive text moderation (v2 task sync)
     std::string url = "https://api.thehive.ai/api/v2/task/sync";
     
     HttpRequest req;
     req.url = url;
     req.method = "POST";
+    // Hive expects "Token <key>"
     req.headers["Authorization"] = "Token " + apiKey_;
     req.headers["Content-Type"] = "application/json";
     

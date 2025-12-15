@@ -7,6 +7,7 @@
 #include "detectors/HiveTextModerator.h"
 #include "network/QtHttpClient.h"
 #include "storage/JsonlStorage.h"
+#include "storage/Storage.h"
 #include "utils/Logger.h"
 #include "utils/Crypto.h"
 #include <QApplication>
@@ -17,6 +18,9 @@
 #include <QDir>
 #include <QTimer>
 #include <QItemSelectionModel>
+#include <QDateTime>
+#include <QUuid>
+#include <QMenuBar>
 
 namespace ModAI {
 
@@ -32,10 +36,10 @@ MainWindow::MainWindow(QWidget* parent)
     setupConnections();
     
     // Initialize components
-    std::string dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdString() + "/data";
-    QDir().mkpath(QString::fromStdString(dataPath));
+    dataPath_ = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdString() + "/data";
+    QDir().mkpath(QString::fromStdString(dataPath_));
     
-    Logger::init(dataPath + "/logs/system.log");
+    Logger::init(dataPath_ + "/logs/system.log");
     Logger::info("Application started");
     
     // Load API keys from secure storage
@@ -68,7 +72,7 @@ MainWindow::MainWindow(QWidget* parent)
     
     // Create rule engine
     auto ruleEngine = std::make_unique<RuleEngine>();
-    std::string rulesPath = dataPath + "/rules.json";
+    std::string rulesPath = dataPath_ + "/rules.json";
     
     // Copy default rules if not exists
     if (!QFile::exists(QString::fromStdString(rulesPath))) {
@@ -85,11 +89,12 @@ MainWindow::MainWindow(QWidget* parent)
     ruleEngine->loadRulesFromJson(rulesPath);
     
     // Create storage
-    auto storage = std::make_unique<JsonlStorage>(dataPath);
+    auto storage = std::make_unique<JsonlStorage>(dataPath_);
+    storagePtr_ = storage.get();
     
     // Create cache
-    std::string cachePath = dataPath + "/cache/results.jsonl";
-    QDir().mkpath(QString::fromStdString(dataPath + "/cache"));
+    std::string cachePath = dataPath_ + "/cache/results.jsonl";
+    QDir().mkpath(QString::fromStdString(dataPath_ + "/cache"));
     auto cache = std::make_unique<ResultCache>(cachePath);
     
     // Create moderation engine
@@ -115,15 +120,15 @@ MainWindow::MainWindow(QWidget* parent)
         redditClientId,
         redditClientSecret,
         "ModAI/1.0 by /u/yourusername",
-        dataPath
+        dataPath_
     );
     
     scraper_->setOnItemScraped([this](const ContentItem& item) {
-        // Process item through moderation engine
+        // Process item through moderation engine on the main thread to avoid cross-thread QNetwork issues
         moderationEngine_->processItem(item);
     });
     
-    loadExistingData();
+    // Do not auto-load old records on startup; user can load via menu.
 }
 
 MainWindow::~MainWindow() {
@@ -131,6 +136,7 @@ MainWindow::~MainWindow() {
         workerThread_->quit();
         workerThread_->wait();
     }
+    cleanupOnExit();
 }
 
 void MainWindow::setupUI() {
@@ -208,6 +214,12 @@ void MainWindow::setupUI() {
     statusLabel_ = new QLabel("Ready");
     statusBar()->addWidget(statusLabel_);
     
+    // Menu: History -> Load Previous
+    QMenu* historyMenu = menuBar()->addMenu("History");
+    QAction* loadHistory = new QAction("Load Previous Session", this);
+    historyMenu->addAction(loadHistory);
+    connect(loadHistory, &QAction::triggered, this, &MainWindow::onLoadHistory);
+
     // Railguard overlay
     railguardOverlay_ = new RailguardOverlay(this);
     railguardOverlay_->hide();
@@ -228,8 +240,16 @@ void MainWindow::setupConnections() {
 }
 
 void MainWindow::loadExistingData() {
-    // Load existing content from storage
-    // This would be done asynchronously in production
+    if (!storagePtr_) {
+        return;
+    }
+    auto items = storagePtr_->loadAllContent();
+    model_->clear();
+    for (const auto& item : items) {
+        model_->addItem(item);
+    }
+    historyLoaded_ = true;
+    statusBar()->showMessage("Loaded previous session items", 3000);
 }
 
 void MainWindow::onStartScraping() {
@@ -287,9 +307,36 @@ void MainWindow::onReviewRequested(const std::string& itemId) {
 }
 
 void MainWindow::onOverrideAction(const std::string& itemId, const std::string& newStatus) {
-    // Update item status and save action
-    // Implementation would update storage and model
-    Logger::info("Override action: " + itemId + " -> " + newStatus);
+    if (!storagePtr_) {
+        Logger::warn("Storage unavailable for override action");
+        return;
+    }
+
+    for (int i = 0; i < model_->rowCount(); ++i) {
+        ContentItem item = model_->getItem(i);
+        if (item.id == itemId) {
+            std::string prev = item.decision.auto_action;
+            item.decision.auto_action = newStatus;
+            model_->updateItem(i, item);
+
+            HumanAction action;
+            action.action_id = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
+            action.content_id = itemId;
+            action.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toStdString();
+            action.reviewer = "local_user";
+            action.previous_status = prev;
+            action.new_status = newStatus;
+            action.reason = "manual override";
+            action.schema_version = 1;
+
+            try {
+                storagePtr_->saveAction(action);
+            } catch (const std::exception& e) {
+                Logger::error("Failed to save override action: " + std::string(e.what()));
+            }
+            break;
+        }
+    }
 }
 
 void MainWindow::onSearchTextChanged(const QString& text) {
@@ -305,6 +352,32 @@ void MainWindow::onFilterChanged(int index) {
     else status = ""; // All Statuses
     
     proxyModel_->setStatusFilter(status);
+}
+
+void MainWindow::onLoadHistory() {
+    if (historyLoaded_) {
+        statusBar()->showMessage("History already loaded", 2000);
+        return;
+    }
+    loadExistingData();
+}
+
+void MainWindow::cleanupOnExit() {
+    // Delete scraped content when closing the app
+    QString contentFile = QString::fromStdString(dataPath_ + "/content.jsonl");
+    if (QFile::exists(contentFile)) {
+        QFile::remove(contentFile);
+    }
+    // Optionally clear cached images directory if it exists
+    QDir imagesDir(QString::fromStdString(dataPath_ + "/images"));
+    if (imagesDir.exists()) {
+        imagesDir.removeRecursively();
+    }
+    // Clear cache results
+    QString cacheFile = QString::fromStdString(dataPath_ + "/cache/results.jsonl");
+    if (QFile::exists(cacheFile)) {
+        QFile::remove(cacheFile);
+    }
 }
 
 } // namespace ModAI

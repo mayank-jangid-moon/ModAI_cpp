@@ -27,6 +27,7 @@ RedditScraper::RedditScraper(std::unique_ptr<HttpClient> httpClient,
     , clientSecret_(clientSecret)
     , userAgent_(userAgent)
     , storagePath_(storagePath)
+    , tokenExpiresAt_(std::chrono::steady_clock::now())
     , rateLimiter_(std::make_unique<RateLimiter>(60, std::chrono::seconds(60)))
     , isRunning_(false) {
     
@@ -41,23 +42,65 @@ RedditScraper::RedditScraper(std::unique_ptr<HttpClient> httpClient,
 }
 
 void RedditScraper::authenticate() {
-    // No authentication needed for public JSON API
-    // Reddit allows accessing public subreddit data via .json endpoint
-    Logger::info("Using public Reddit JSON API (no authentication required)");
+    // If no credentials, operate in public JSON mode (previous behavior)
+    if (clientId_.empty() || clientSecret_.empty()) {
+        accessToken_.clear();
+        return;
+    }
+
+    // Refresh OAuth token if missing or expired (simple client_credentials flow)
+    if (!accessToken_.empty() && std::chrono::steady_clock::now() < tokenExpiresAt_) {
+        return;
+    }
+
+    HttpRequest req;
+    req.url = "https://www.reddit.com/api/v1/access_token";
+    req.method = "POST";
+    req.headers["User-Agent"] = userAgent_;
+    req.headers["Content-Type"] = "application/x-www-form-urlencoded";
+
+    // Basic auth header
+    QByteArray creds = QString::fromStdString(clientId_ + ":" + clientSecret_).toUtf8().toBase64();
+    req.headers["Authorization"] = "Basic " + creds.toStdString();
+    req.body = "grant_type=client_credentials&duration=permanent";
+
+    try {
+        HttpResponse response = httpClient_->post(req);
+        if (!response.success || response.statusCode != 200) {
+            Logger::warn("Failed to obtain Reddit OAuth token: " + response.errorMessage);
+            accessToken_.clear();
+            return;
+        }
+
+        auto json = nlohmann::json::parse(response.body);
+        accessToken_ = json.value("access_token", "");
+        int expiresIn = json.value("expires_in", 3600);
+        tokenExpiresAt_ = std::chrono::steady_clock::now() + std::chrono::seconds(expiresIn - 60);
+        Logger::info("Reddit OAuth token acquired");
+    } catch (const std::exception& e) {
+        Logger::error("Exception acquiring Reddit token: " + std::string(e.what()));
+        accessToken_.clear();
+    }
 }
 
 std::vector<ContentItem> RedditScraper::fetchPosts(const std::string& subreddit) {
     std::vector<ContentItem> items;
     
     rateLimiter_->waitIfNeeded();
+    authenticate();
     
-    // Use public JSON API - no authentication needed
-    std::string url = "https://www.reddit.com/r/" + subreddit + "/new.json?limit=25";
+    const bool useOAuth = !accessToken_.empty();
+    std::string url = useOAuth
+        ? "https://oauth.reddit.com/r/" + subreddit + "/new.json?limit=25"
+        : "https://www.reddit.com/r/" + subreddit + "/new.json?limit=25";
     
     HttpRequest req;
     req.url = url;
     req.method = "GET";
     req.headers["User-Agent"] = userAgent_;
+    if (useOAuth) {
+        req.headers["Authorization"] = "Bearer " + accessToken_;
+    }
     
     try {
         HttpResponse response = httpClient_->get(url, req.headers);
@@ -233,13 +276,20 @@ std::vector<ContentItem> RedditScraper::fetchComments(const std::string& subredd
     std::vector<ContentItem> items;
     
     rateLimiter_->waitIfNeeded();
+    authenticate();
     
-    std::string url = "https://www.reddit.com/r/" + subreddit + "/comments.json?limit=25";
+    const bool useOAuth = !accessToken_.empty();
+    std::string url = useOAuth
+        ? "https://oauth.reddit.com/r/" + subreddit + "/comments.json?limit=25"
+        : "https://www.reddit.com/r/" + subreddit + "/comments.json?limit=25";
     
     HttpRequest req;
     req.url = url;
     req.method = "GET";
     req.headers["User-Agent"] = userAgent_;
+    if (useOAuth) {
+        req.headers["Authorization"] = "Bearer " + accessToken_;
+    }
     
     try {
         HttpResponse response = httpClient_->get(url, req.headers);

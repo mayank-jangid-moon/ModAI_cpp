@@ -11,6 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets 
     Network 
     Charts
+    Concurrent
 )
 
 # Find nlohmann/json
@@ -18,6 +19,7 @@ find_package(nlohmann_json 3.2.0 REQUIRED)
 
 # Optional: spdlog for logging
 find_package(spdlog QUIET)
+find_package(OpenSSL REQUIRED)
 
 # Include directories
 include_directories(
@@ -92,7 +94,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::Charts
+    Qt6::Concurrent
     nlohmann_json::nlohmann_json
+    OpenSSL::Crypto
 )
 
 # Optional: link spdlog if found

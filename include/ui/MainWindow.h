@@ -16,9 +16,12 @@
 #include "ui/DashboardModel.h"
 #include "ui/DetailPanel.h"
 #include "ui/RailguardOverlay.h"
+#include "storage/Storage.h"
 #include <QSortFilterProxyModel>
 #include <QComboBox>
 #include "ui/DashboardProxyModel.h"
+#include <QtConcurrent>
+#include <QAction>
 
 namespace ModAI {
 
@@ -41,12 +44,16 @@ private:
     
     std::unique_ptr<ModerationEngine> moderationEngine_;
     std::unique_ptr<RedditScraper> scraper_;
+    Storage* storagePtr_{nullptr};
+    bool historyLoaded_{false};
+    std::string dataPath_;
     
     QThread* workerThread_;
     
     void setupUI();
     void setupConnections();
     void loadExistingData();
+    void cleanupOnExit();
 
 private slots:
     void onStartScraping();
@@ -57,6 +64,7 @@ private slots:
     void onOverrideAction(const std::string& itemId, const std::string& newStatus);
     void onSearchTextChanged(const QString& text);
     void onFilterChanged(int index);
+    void onLoadHistory();
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);

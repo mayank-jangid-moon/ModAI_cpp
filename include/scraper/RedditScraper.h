@@ -10,6 +10,7 @@
 #include <memory>
 #include <functional>
 #include <nlohmann/json.hpp>
+#include <chrono>
 
 namespace ModAI {
 
@@ -22,6 +23,7 @@ private:
     std::string clientSecret_;
     std::string userAgent_;
     std::string accessToken_;
+    std::chrono::steady_clock::time_point tokenExpiresAt_;
     std::string storagePath_;
     std::unique_ptr<RateLimiter> rateLimiter_;
     QTimer* scrapeTimer_;

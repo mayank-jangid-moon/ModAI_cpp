@@ -5,6 +5,7 @@
 #include <sstream>
 #include <regex>
 #include <algorithm>
+#include <cctype>
 
 namespace ModAI {
 
@@ -69,31 +70,61 @@ double RuleEngine::getValue(const std::string& field, const ContentItem& item) {
 }
 
 bool RuleEngine::evaluateCondition(const Rule& rule, const ContentItem& item) {
-    // Simple condition parser: "field > value" or "field < value" or "field >= value"
-    std::regex pattern(R"((\w+)\s*(>=|<=|>|<|==)\s*([\d.]+))");
-    std::smatch match;
-    
-    if (std::regex_search(rule.condition, match, pattern)) {
+    // Supports simple AND/OR expressions like "ai_score > 0.8 && sexual > 0.9"
+    auto trim = [](std::string s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
+        return s;
+    };
+
+    auto evaluateComparison = [&](const std::string& expr) {
+        std::regex pattern(R"((\w+)\s*(>=|<=|>|<|==)\s*([\d.]+))");
+        std::smatch match;
+        if (!std::regex_search(expr, match, pattern)) {
+            return false;
+        }
         std::string field = match[1].str();
         std::string op = match[2].str();
         double threshold = std::stod(match[3].str());
-        
         double value = getValue(field, item);
-        
-        if (op == ">") {
-            return value > threshold;
-        } else if (op == ">=") {
-            return value >= threshold;
-        } else if (op == "<") {
-            return value < threshold;
-        } else if (op == "<=") {
-            return value <= threshold;
-        } else if (op == "==") {
-            return std::abs(value - threshold) < 0.0001;
+
+        if (op == ">") return value > threshold;
+        if (op == ">=") return value >= threshold;
+        if (op == "<") return value < threshold;
+        if (op == "<=") return value <= threshold;
+        if (op == "==") return std::abs(value - threshold) < 0.0001;
+        return false;
+    };
+
+    // OR segments
+    size_t start = 0;
+    bool anyOr = false;
+    while (start <= rule.condition.size()) {
+        size_t orPos = rule.condition.find("||", start);
+        std::string orSegment = rule.condition.substr(start, orPos == std::string::npos ? std::string::npos : orPos - start);
+        start = (orPos == std::string::npos) ? rule.condition.size() + 1 : orPos + 2;
+
+        // AND segments inside each OR segment
+        bool andSatisfied = true;
+        size_t andStart = 0;
+        while (andStart <= orSegment.size()) {
+            size_t andPos = orSegment.find("&&", andStart);
+            std::string andSegment = orSegment.substr(andStart, andPos == std::string::npos ? std::string::npos : andPos - andStart);
+            andStart = (andPos == std::string::npos) ? orSegment.size() + 1 : andPos + 2;
+
+            if (!evaluateComparison(trim(andSegment))) {
+                andSatisfied = false;
+                break;
+            }
+        }
+
+        anyOr = anyOr || andSatisfied;
+        if (anyOr) {
+            return true;
         }
     }
-    
-    return false;
+
+    return anyOr;
 }
 
 std::string RuleEngine::evaluate(const ContentItem& item) {

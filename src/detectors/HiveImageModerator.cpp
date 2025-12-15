@@ -27,11 +27,13 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
     
     rateLimiter_->waitIfNeeded();
     
+    // Hive visual moderation (v2 task sync)
     std::string url = "https://api.thehive.ai/api/v2/task/sync";
     
     HttpRequest req;
     req.url = url;
     req.method = "POST";
+    // Hive expects "Token <key>"
     req.headers["Authorization"] = "Token " + apiKey_;
     req.contentType = "multipart/form-data";
     req.binaryData = imageBytes;
@@ -51,7 +53,22 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
         
         auto json = nlohmann::json::parse(response.body);
         
-        // Parse Hive response format
+        // v3 format: { "output": [ { "classes": [ { "class_name": "...", "value": 0.9 }, ... ] } ] }
+        if (json.contains("output") && json["output"].is_array()) {
+            for (const auto& item : json["output"]) {
+                if (item.contains("classes") && item["classes"].is_array()) {
+                    for (const auto& cls : item["classes"]) {
+                        if (cls.contains("class_name") && cls.contains("value")) {
+                            std::string label = cls["class_name"].get<std::string>();
+                            double score = cls["value"].get<double>();
+                            result.labels[label] = score;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Legacy formats
         if (json.contains("status") && json["status"] == "completed") {
             if (json.contains("result") && json["result"].contains("output")) {
                 auto output = json["result"]["output"];
@@ -70,8 +87,6 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
                 }
             }
         }
-        
-        // Alternative format: direct predictions array
         if (json.contains("predictions") && json["predictions"].is_array()) {
             for (const auto& pred : json["predictions"]) {
                 if (pred.contains("label") && pred.contains("confidence")) {
