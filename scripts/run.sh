@@ -11,7 +11,7 @@ EXECUTABLE="$BUILD_DIR/ModAI"
 
 # Check if executable exists
 if [ ! -f "$EXECUTABLE" ]; then
-    echo "❌ Executable not found: $EXECUTABLE"
+    echo "ERROR: Executable not found: $EXECUTABLE"
     echo ""
     echo "Please build the project first:"
     echo "  ./scripts/build.sh"
@@ -33,7 +33,7 @@ echo ""
 
 # Check for API keys
 if [ -z "$MODAI_HUGGINGFACE_TOKEN" ] && [ -z "$MODAI_HIVE_API_KEY" ]; then
-    echo "⚠️  Warning: API keys not set in environment variables"
+    echo "Warning: API keys not set in environment variables"
     echo "   The app will look for keys in config file"
     echo "   See SETUP.md for configuration instructions"
     echo ""
@@ -47,7 +47,7 @@ EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo ""
-    echo "❌ Application exited with error code: $EXIT_CODE"
+    echo "ERROR: Application exited with error code: $EXIT_CODE"
     echo ""
     echo "Troubleshooting:"
     echo "1. Check that all dependencies are installed"

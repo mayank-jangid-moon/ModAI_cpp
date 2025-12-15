@@ -488,7 +488,7 @@ After setup:
 
 ## Security Notes
 
-⚠️ **Important**: 
+**Important**: 
 - API keys are currently stored in plain text in config files
 - Do not commit API keys to version control
 - Use environment variables in production

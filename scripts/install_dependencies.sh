@@ -97,7 +97,7 @@ install_macos() {
     fi
     
     echo ""
-    echo "✅ macOS dependencies installed!"
+    echo "macOS dependencies installed!"
 }
 
 # Function to install on Linux (apt)
@@ -142,7 +142,7 @@ install_linux_apt() {
     fi
     
     echo ""
-    echo "✅ Linux (apt) dependencies installed!"
+    echo "Linux (apt) dependencies installed!"
 }
 
 # Function to install on Linux (yum)
@@ -178,10 +178,10 @@ install_linux_yum() {
     fi
     
     echo ""
-    echo "⚠️  Note: nlohmann/json may need to be installed manually on yum-based systems"
+    echo "Note: nlohmann/json may need to be installed manually on yum-based systems"
     echo "Download from: https://github.com/nlohmann/json/releases"
     echo ""
-    echo "✅ Linux (yum) dependencies installed!"
+    echo "Linux (yum) dependencies installed!"
 }
 
 # Main installation
@@ -206,28 +206,28 @@ echo -n "CMake: "
 if command_exists cmake; then
     cmake --version | head -n1
 else
-    echo "❌ NOT FOUND"
+    echo "NOT FOUND"
 fi
 
 echo -n "Qt6: "
 if command_exists qmake6; then
     qmake6 -v 2>/dev/null | head -n1 || echo "Installed"
 else
-    echo "⚠️  qmake6 not in PATH (Qt6 may still be installed)"
+    echo "qmake6 not in PATH (Qt6 may still be installed)"
 fi
 
 echo -n "OpenSSL: "
 if command_exists openssl; then
     openssl version
 else
-    echo "❌ NOT FOUND"
+    echo "NOT FOUND"
 fi
 
 echo -n "nlohmann/json: "
 if [ -d "/opt/homebrew/include/nlohmann" ] || [ -d "/usr/local/include/nlohmann" ] || [ -d "/usr/include/nlohmann" ]; then
-    echo "✅ Found"
+    echo "Found"
 else
-    echo "⚠️  Not found in standard locations"
+    echo "Not found in standard locations"
 fi
 
 echo ""

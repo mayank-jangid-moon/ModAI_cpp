@@ -24,7 +24,7 @@ RailguardOverlay::RailguardOverlay(QWidget* parent)
     
     QVBoxLayout* layout = new QVBoxLayout(container);
     
-    titleLabel_ = new QLabel("⚠️ AUTO-BLOCKED CONTENT");
+    titleLabel_ = new QLabel("AUTO-BLOCKED CONTENT");
     titleLabel_->setStyleSheet("font-size: 18px; font-weight: bold;");
     layout->addWidget(titleLabel_);
     

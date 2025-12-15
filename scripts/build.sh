@@ -52,7 +52,7 @@ fi
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo "❌ CMake configuration failed!"
+    echo "ERROR: CMake configuration failed!"
     echo ""
     echo "Troubleshooting:"
     echo "1. Make sure Qt6 is installed: ./scripts/install_dependencies.sh"
@@ -70,13 +70,13 @@ cmake --build . --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/d
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo "❌ Build failed!"
+    echo "ERROR: Build failed!"
     exit 1
 fi
 
 echo ""
 echo "========================================="
-echo "✅ Build successful!"
+echo "Build successful!"
 echo "========================================="
 echo ""
 echo "Executable location: $BUILD_DIR/ModAI"

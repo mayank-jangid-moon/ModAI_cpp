@@ -7,7 +7,7 @@ $Executable = Join-Path $BuildDir "ModAI.exe"
 
 # Check if executable exists
 if (-not (Test-Path $Executable)) {
-    Write-Host "❌ Executable not found: $Executable" -ForegroundColor Red
+    Write-Host "ERROR: Executable not found: $Executable" -ForegroundColor Red
     Write-Host ""
     Write-Host "Please build the project first:" -ForegroundColor Yellow
     Write-Host "  .\scripts\build.ps1" -ForegroundColor Yellow
@@ -23,7 +23,7 @@ Write-Host ""
 
 # Check for API keys
 if (-not $env:MODAI_HUGGINGFACE_TOKEN -and -not $env:MODAI_HIVE_API_KEY) {
-    Write-Host "⚠️  Warning: API keys not set in environment variables" -ForegroundColor Yellow
+    Write-Host "Warning: API keys not set in environment variables" -ForegroundColor Yellow
     Write-Host "   The app will look for keys in config file" -ForegroundColor Yellow
     Write-Host "   See SETUP.md for configuration instructions" -ForegroundColor Yellow
     Write-Host ""
@@ -35,7 +35,7 @@ Set-Location $ProjectRoot
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "❌ Application exited with error code: $LASTEXITCODE" -ForegroundColor Red
+    Write-Host "ERROR: Application exited with error code: $LASTEXITCODE" -ForegroundColor Red
     Write-Host ""
     Write-Host "Troubleshooting:" -ForegroundColor Yellow
     Write-Host "1. Check that all dependencies are installed"

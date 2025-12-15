@@ -51,7 +51,7 @@ if ($Qt6Dir) {
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "❌ CMake configuration failed!" -ForegroundColor Red
+    Write-Host "ERROR: CMake configuration failed!" -ForegroundColor Red
     Write-Host ""
     Write-Host "Troubleshooting:" -ForegroundColor Yellow
     Write-Host "1. Make sure Qt6 is installed"
@@ -69,13 +69,13 @@ cmake --build . --config Release
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "❌ Build failed!" -ForegroundColor Red
+    Write-Host "ERROR: Build failed!" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "✅ Build successful!" -ForegroundColor Green
+Write-Host "Build successful!" -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Executable location: $BuildDir\ModAI.exe" -ForegroundColor Green

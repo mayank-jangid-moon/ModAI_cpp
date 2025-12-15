@@ -10,7 +10,7 @@ Write-Host ""
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "⚠️  Warning: Not running as administrator. Some installations may require admin rights." -ForegroundColor Yellow
+    Write-Host "Warning: Not running as administrator. Some installations may require admin rights." -ForegroundColor Yellow
     Write-Host ""
 }
 
@@ -36,7 +36,7 @@ if (-not $hasChoco) {
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
         $hasChoco = $true
     } else {
-        Write-Host "⚠️  Please install dependencies manually:" -ForegroundColor Yellow
+        Write-Host "Please install dependencies manually:" -ForegroundColor Yellow
         Write-Host "   1. CMake: https://cmake.org/download/"
         Write-Host "   2. Qt6: https://www.qt.io/download"
         Write-Host "   3. Visual Studio 2019+ or MinGW"
@@ -89,7 +89,7 @@ Write-Host -NoNewline "CMake: "
 if (Test-Command cmake) {
     cmake --version | Select-Object -First 1
 } else {
-    Write-Host "❌ NOT FOUND" -ForegroundColor Red
+    Write-Host "NOT FOUND" -ForegroundColor Red
 }
 
 # Verify Qt6
@@ -103,14 +103,14 @@ $qtPaths = @(
 $qtFound = $false
 foreach ($path in $qtPaths) {
     if (Test-Path $path) {
-        Write-Host "✅ Found at: $path" -ForegroundColor Green
+        Write-Host "Found at: $path" -ForegroundColor Green
         $qtFound = $true
         break
     }
 }
 
 if (-not $qtFound) {
-    Write-Host "⚠️  Not found in standard locations" -ForegroundColor Yellow
+    Write-Host "Not found in standard locations" -ForegroundColor Yellow
     Write-Host "   Please install Qt6 from https://www.qt.io/download" -ForegroundColor Yellow
 }
 
