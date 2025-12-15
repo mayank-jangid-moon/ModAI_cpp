@@ -30,60 +30,22 @@ RedditScraper::RedditScraper(std::unique_ptr<HttpClient> httpClient,
 }
 
 void RedditScraper::authenticate() {
-    if (!accessToken_.empty()) {
-        return;  // Already authenticated
-    }
-    
-    std::string url = "https://www.reddit.com/api/v1/access_token";
-    
-    HttpRequest req;
-    req.url = url;
-    req.method = "POST";
-    req.headers["User-Agent"] = userAgent_;
-    req.contentType = "application/x-www-form-urlencoded";
-    
-    // Basic auth: clientId:clientSecret base64 encoded
-    std::string auth = clientId_ + ":" + clientSecret_;
-    QByteArray authBytes = QByteArray::fromStdString(auth);
-    req.headers["Authorization"] = "Basic " + authBytes.toBase64().toStdString();
-    
-    req.body = "grant_type=client_credentials";
-    
-    try {
-        HttpResponse response = httpClient_->post(req);
-        
-        if (response.success && response.statusCode == 200) {
-            auto json = nlohmann::json::parse(response.body);
-            if (json.contains("access_token")) {
-                accessToken_ = json["access_token"].get<std::string>();
-                Logger::info("Reddit authentication successful");
-            }
-        } else {
-            Logger::error("Reddit authentication failed: " + response.errorMessage);
-        }
-    } catch (const std::exception& e) {
-        Logger::error("Exception during Reddit authentication: " + std::string(e.what()));
-    }
+    // No authentication needed for public JSON API
+    // Reddit allows accessing public subreddit data via .json endpoint
+    Logger::info("Using public Reddit JSON API (no authentication required)");
 }
 
 std::vector<ContentItem> RedditScraper::fetchPosts(const std::string& subreddit) {
     std::vector<ContentItem> items;
     
-    if (accessToken_.empty()) {
-        authenticate();
-        if (accessToken_.empty()) {
-            return items;
-        }
-    }
-    
     rateLimiter_->waitIfNeeded();
     
-    std::string url = "https://oauth.reddit.com/r/" + subreddit + "/new.json?limit=25";
+    // Use public JSON API - no authentication needed
+    std::string url = "https://www.reddit.com/r/" + subreddit + "/new.json?limit=25";
     
     HttpRequest req;
     req.url = url;
     req.method = "GET";
-    req.headers["Authorization"] = "Bearer " + accessToken_;
     req.headers["User-Agent"] = userAgent_;
     
     try {
@@ -101,11 +63,6 @@ std::vector<ContentItem> RedditScraper::fetchPosts(const std::string& subreddit)
                 }
             }
         } else {
-            if (response.statusCode == 401) {
-                // Token expired, re-authenticate
-                accessToken_.clear();
-                authenticate();
-            }
             Logger::warn("Failed to fetch posts from " + subreddit + ": " + response.errorMessage);
         }
     } catch (const std::exception& e) {

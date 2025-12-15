@@ -74,6 +74,11 @@ set(SOURCES
     src/ui/ReviewDialog.cpp
 )
 
+# Enable Qt MOC BEFORE creating the executable
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -92,11 +97,6 @@ if(spdlog_FOUND)
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SPDLOG)
 endif()
 
-# Enable Qt MOC
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
-
 # Platform-specific settings
 if(WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
@@ -112,7 +112,7 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/reports)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/csv)
 
 # Tests (optional)
-if(EXISTS "${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
     enable_testing()
     add_subdirectory(tests)
 endif()
