@@ -156,6 +156,24 @@ void MainWindow::setupUI() {
     
     leftLayout->addLayout(toolbarLayout);
     
+    // Search and Filter toolbar
+    QHBoxLayout* filterLayout = new QHBoxLayout;
+    searchInput_ = new QLineEdit;
+    searchInput_->setPlaceholderText("Search...");
+    filterCombo_ = new QComboBox;
+    filterCombo_->addItem("All Statuses");
+    filterCombo_->addItem("Blocked");
+    filterCombo_->addItem("Review");
+    filterCombo_->addItem("Allowed");
+    
+    filterLayout->addWidget(new QLabel("Search:"));
+    filterLayout->addWidget(searchInput_);
+    filterLayout->addWidget(new QLabel("Filter:"));
+    filterLayout->addWidget(filterCombo_);
+    filterLayout->addStretch();
+    
+    leftLayout->addLayout(filterLayout);
+    
     // Table
     tableView_ = new QTableView;
     model_ = new DashboardModel(this);

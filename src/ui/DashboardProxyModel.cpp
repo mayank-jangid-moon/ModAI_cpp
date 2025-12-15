@@ -12,12 +12,12 @@ DashboardProxyModel::DashboardProxyModel(QObject* parent)
 
 void DashboardProxyModel::setStatusFilter(const QString& status) {
     statusFilter_ = status;
-    invalidateFilter();
+    invalidate();
 }
 
 void DashboardProxyModel::setSearchFilter(const QString& text) {
     searchFilter_ = text;
-    invalidateFilter();
+    invalidate();
 }
 
 bool DashboardProxyModel::filterAcceptsRow(int source_row, const QModelIndex& source_parent) const {
