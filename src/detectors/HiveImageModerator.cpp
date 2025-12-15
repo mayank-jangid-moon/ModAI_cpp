@@ -11,11 +11,19 @@ HiveImageModerator::HiveImageModerator(std::unique_ptr<HttpClient> httpClient,
     : httpClient_(std::move(httpClient))
     , apiKey_(apiKey)
     , rateLimiter_(std::make_unique<RateLimiter>(100, std::chrono::seconds(60))) {
+    if (apiKey_.empty()) {
+        Logger::warn("Hive API key is empty - image moderation will be skipped");
+    }
 }
 
 VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_t>& imageBytes, 
                                                          const std::string& mime) {
     VisualModerationResult result;
+    
+    // Skip if no API key
+    if (apiKey_.empty()) {
+        return result;
+    }
     
     rateLimiter_->waitIfNeeded();
     

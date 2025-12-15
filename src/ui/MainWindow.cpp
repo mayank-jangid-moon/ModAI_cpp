@@ -44,10 +44,15 @@ MainWindow::MainWindow(QWidget* parent)
     std::string redditClientId = Crypto::getApiKey("reddit_client_id");
     std::string redditClientSecret = Crypto::getApiKey("reddit_client_secret");
     
-    if (hfToken.empty() || hiveKey.empty()) {
-        QMessageBox::warning(this, "API Keys Missing", 
-                           "Please configure API keys in Settings.\n"
-                           "Required: Hugging Face token, Hive API key, Reddit OAuth credentials");
+    if (hfToken.empty() && hiveKey.empty()) {
+        Logger::warn("No API keys configured - using public Reddit scraping only");
+        statusBar()->showMessage("⚠ No API keys - detection features disabled. Scraping only.", 0);
+    } else if (hfToken.empty()) {
+        Logger::warn("No HuggingFace token - AI text detection disabled");
+        statusBar()->showMessage("⚠ HuggingFace token missing - AI detection disabled", 0);
+    } else if (hiveKey.empty()) {
+        Logger::warn("No Hive API key - moderation disabled");
+        statusBar()->showMessage("⚠ Hive API key missing - moderation disabled", 0);
     }
     
     // Create HTTP client

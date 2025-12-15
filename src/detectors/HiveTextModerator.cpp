@@ -11,10 +11,18 @@ HiveTextModerator::HiveTextModerator(std::unique_ptr<HttpClient> httpClient,
     : httpClient_(std::move(httpClient))
     , apiKey_(apiKey)
     , rateLimiter_(std::make_unique<RateLimiter>(100, std::chrono::seconds(60))) {
+    if (apiKey_.empty()) {
+        Logger::warn("Hive API key is empty - text moderation will be skipped");
+    }
 }
 
 TextModerationResult HiveTextModerator::analyzeText(const std::string& text) {
     TextModerationResult result;
+    
+    // Skip if no API key
+    if (apiKey_.empty()) {
+        return result;
+    }
     
     rateLimiter_->waitIfNeeded();
     

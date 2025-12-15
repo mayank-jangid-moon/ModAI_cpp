@@ -10,12 +10,23 @@ HFTextDetector::HFTextDetector(std::unique_ptr<HttpClient> httpClient,
                                const std::string& apiToken)
     : httpClient_(std::move(httpClient))
     , apiToken_(apiToken)
-    , modelId_("roberta-base-openai-detector")
+    , modelId_("hello-simpleai/chatgpt-detector-roberta")
     , rateLimiter_(std::make_unique<RateLimiter>(30, std::chrono::seconds(60))) {
+    if (apiToken_.empty()) {
+        Logger::warn("HuggingFace API token is empty - text detection will be skipped");
+    }
 }
 
 TextDetectResult HFTextDetector::analyze(const std::string& text) {
     TextDetectResult result;
+    result.label = "unknown";
+    result.ai_score = 0.0;
+    result.confidence = 0.0;
+    
+    // Skip if no API token
+    if (apiToken_.empty()) {
+        return result;
+    }
     
     rateLimiter_->waitIfNeeded();
     
