@@ -21,6 +21,21 @@ find_package(nlohmann_json 3.2.0 REQUIRED)
 find_package(spdlog QUIET)
 find_package(OpenSSL REQUIRED)
 
+# Find ONNX Runtime for local AI inference
+find_package(onnxruntime QUIET)
+if(NOT onnxruntime_FOUND)
+    # Try to find it manually
+    find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
+        PATHS /usr/include /usr/local/include
+        PATH_SUFFIXES onnxruntime/core/session)
+    find_library(ONNXRUNTIME_LIBRARY NAMES onnxruntime
+        PATHS /usr/lib /usr/local/lib)
+    if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
+        set(ONNXRUNTIME_FOUND TRUE)
+        message(STATUS "Found ONNX Runtime: ${ONNXRUNTIME_LIBRARY}")
+    endif()
+endif()
+
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
@@ -37,7 +52,7 @@ set(HEADERS
     include/network/QtHttpClient.h
     include/network/RateLimiter.h
     include/detectors/TextDetector.h
-    include/detectors/HFTextDetector.h
+    include/detectors/LocalAIDetector.h
     include/detectors/ImageModerator.h
     include/detectors/HiveImageModerator.h
     include/detectors/TextModerator.h
@@ -64,7 +79,7 @@ set(SOURCES
     src/core/ContentItem.cpp
     src/network/QtHttpClient.cpp
     src/network/RateLimiter.cpp
-    src/detectors/HFTextDetector.cpp
+    src/detectors/LocalAIDetector.cpp
     src/detectors/HiveImageModerator.cpp
     src/detectors/HiveTextModerator.cpp
     src/scraper/RedditScraper.cpp
@@ -99,6 +114,17 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     OpenSSL::Crypto
 )
 
+# Optional: link ONNX Runtime if found
+if(ONNXRUNTIME_FOUND)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_LIBRARY})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ONNXRUNTIME_FOUND)
+    message(STATUS "Local AI detection enabled with ONNX Runtime")
+else()
+    message(STATUS "ONNX Runtime not found - local AI detection disabled")
+    message(STATUS "Install ONNX Runtime for local inference support")
+endif()
+
 # Optional: link spdlog if found
 if(spdlog_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
@@ -112,6 +138,17 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 endif()
 
+# Build test executable for ONNX inference
+if(ONNXRUNTIME_FOUND)
+    add_executable(test_onnx_inference tests/test_onnx_inference.cpp)
+    target_include_directories(test_onnx_inference PRIVATE 
+        ${CMAKE_SOURCE_DIR}/include
+        ${ONNXRUNTIME_INCLUDE_DIR})
+    target_link_libraries(test_onnx_inference PRIVATE ${ONNXRUNTIME_LIBRARY})
+    target_compile_definitions(test_onnx_inference PRIVATE ONNXRUNTIME_FOUND)
+    message(STATUS "Building ONNX inference test executable")
+endif()
+
 # Create data directory structure
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/cache)
@@ -120,7 +157,7 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/reports)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data/exports/csv)
 
 # Tests (optional)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
     enable_testing()
     add_subdirectory(tests)
 endif()

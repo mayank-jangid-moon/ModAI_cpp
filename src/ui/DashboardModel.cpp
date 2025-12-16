@@ -110,6 +110,15 @@ void DashboardModel::updateItem(int row, const ContentItem& item) {
     }
 }
 
+int DashboardModel::findRowById(const std::string& id) const {
+    for (size_t i = 0; i < items_.size(); ++i) {
+        if (items_[i].id == id) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1; // Not found
+}
+
 Qt::ItemFlags DashboardModel::flags(const QModelIndex& index) const {
     return QAbstractTableModel::flags(index);
 }

@@ -4,8 +4,8 @@ A polished Qt-based desktop application (C++) that scrapes subreddit posts/comme
 
 ## Features
 
-- **Subreddit Scraper**: Configurable subreddit scraping with Reddit OAuth API support. Fetches both posts and comments.
-- **AI Text Detection**: Uses Hugging Face model `desklib/ai-text-detector-v1.01` to detect AI-generated content
+- **Subreddit Scraper**: Configurable subreddit scraping with Reddit public API support. Fetches both posts and comments.
+- **Local AI Text Detection**: Uses local ONNX inference with `desklib/ai-text-detector-v1.01` model for fast, offline AI content detection
 - **Image Moderation**: Hive/TheHive.ai visual moderation for NSFW, violence, hate, and drugs detection. Automatically downloads and processes images.
 - **Text Moderation**: Hive text moderation for offensive/hate/abuse detection
 - **Railguard**: Real-time blocking with animated overlay notifications
@@ -22,7 +22,7 @@ The project follows a modular OOP design:
 - `ui/` - Qt frontend (MainWindow, Dashboard, DetailPanel, RailguardOverlay)
 - `core/` - Business logic (ModerationEngine, RuleEngine)
 - `network/` - HTTP clients with rate limiting (QtNetwork-based)
-- `detectors/` - AI detection and moderation interfaces (HFTextDetector, HiveImageModerator, HiveTextModerator)
+- `detectors/` - AI detection and moderation interfaces (LocalAIDetector with ONNX Runtime, HiveImageModerator, HiveTextModerator)
 - `scraper/` - RedditScraper with OAuth and rate limiting
 - `storage/` - JSONL-based append-only storage (thread-safe, crash-safe)
 - `export/` - PDF/CSV/JSON exporters
@@ -38,16 +38,16 @@ The project follows a modular OOP design:
 # 1. Install dependencies
 ./scripts/install_dependencies.sh
 
-# 2. Set API keys
-export MODAI_HUGGINGFACE_TOKEN="your_token"
-export MODAI_HIVE_API_KEY="your_key"
-export MODAI_REDDIT_CLIENT_ID="your_id"
-export MODAI_REDDIT_CLIENT_SECRET="your_secret"
+# 2. Export ONNX model (one-time setup)
+python3 scripts/export_model_to_onnx.py --output ~/.local/share/ModAI/ModAI/data/models
 
-# 3. Build
+# 3. Set API keys (optional - only needed for Hive moderation)
+export MODAI_HIVE_API_KEY="your_key"
+
+# 4. Build
 ./scripts/build.sh
 
-# 4. Run
+# 5. Run
 ./scripts/run.sh
 ```
 
@@ -57,16 +57,16 @@ export MODAI_REDDIT_CLIENT_SECRET="your_secret"
 # 1. Install dependencies
 .\scripts\install_dependencies.ps1
 
-# 2. Set API keys
-$env:MODAI_HUGGINGFACE_TOKEN = "your_token"
-$env:MODAI_HIVE_API_KEY = "your_key"
-$env:MODAI_REDDIT_CLIENT_ID = "your_id"
-$env:MODAI_REDDIT_CLIENT_SECRET = "your_secret"
+# 2. Export ONNX model (one-time setup)
+python3 scripts/export_model_to_onnx.py --output $env:LOCALAPPDATA\ModAI\ModAI\data\models
 
-# 3. Build
+# 3. Set API keys (optional - only needed for Hive moderation)
+$env:MODAI_HIVE_API_KEY = "your_key"
+
+# 4. Build
 .\scripts\build.ps1
 
-# 4. Run
+# 5. Run
 .\scripts\run.ps1
 ```
 
@@ -77,8 +77,10 @@ $env:MODAI_REDDIT_CLIENT_SECRET = "your_secret"
 - **Qt 6** (Widgets, Network, Charts)
 - **nlohmann/json** (JSON parsing)
 - **OpenSSL** (for TLS/HTTPS)
+- **ONNX Runtime 1.16+** (for local AI inference)
+- **Python 3.8+** (for model export, with torch, transformers, onnx packages)
 
-**See [SETUP.md](SETUP.md) for detailed installation instructions (including Arch).**
+**See [SETUP.md](SETUP.md) for detailed installation instructions and [LOCAL_AI_SETUP.md](docs/LOCAL_AI_SETUP.md) for model setup.**
 
 ## Building
 
@@ -108,16 +110,17 @@ The executable will be in `build/ModAI` (or `build/ModAI.exe` on Windows).
 ### API Keys
 
 The application requires API keys for:
-1. **Hugging Face**: Token for AI text detection
-2. **Hive/TheHive.ai**: API key for visual and text moderation
-3. **Reddit**: OAuth client ID and secret
+1. **Hive/TheHive.ai**: API key for visual and text moderation (optional)
+2. **Reddit**: OAuth client ID and secret (optional, for authenticated scraping)
 
-#### Setting API Keys
+**Note**: AI text detection now uses local ONNX inference and does not require any API keys.
 
-**Option 1: Environment Variables (Recommended for CI)**
+#### Setting API Keys (Optional)
+
+**Option 1: Environment Variables**
 ```bash
-export MODAI_HUGGINGFACE_TOKEN="your_hf_token"
 export MODAI_HIVE_API_KEY="your_hive_key"
+# Reddit OAuth (optional - for authenticated scraping)
 export MODAI_REDDIT_CLIENT_ID="your_reddit_client_id"
 export MODAI_REDDIT_CLIENT_SECRET="your_reddit_client_secret"
 ```
@@ -182,11 +185,11 @@ All storage is **append-only**, **thread-safe**, and **crash-safe**. Data is hum
 
 ## API Endpoints Used
 
-### Hugging Face Inference API
-- **Endpoint**: `https://api-inference.huggingface.co/models/desklib/ai-text-detector-v1.01`
-- **Method**: POST
-- **Auth**: Bearer token
-- **Rate Limit**: 30 requests per minute
+### Local ONNX Inference
+- **Model**: desklib/ai-text-detector-v1.01 (DeBERTa-based)
+- **Runtime**: ONNX Runtime (local, no API calls)
+- **Performance**: ~100-500ms per text depending on length
+- **Rate Limit**: None (runs locally)
 
 ### Hive/TheHive.ai
 - **Visual Moderation**: `https://api.thehive.ai/api/v2/task/sync`

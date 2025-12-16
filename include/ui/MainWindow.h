@@ -22,6 +22,8 @@
 #include "ui/DashboardProxyModel.h"
 #include <QtConcurrent>
 #include <QAction>
+#include <QQueue>
+#include <QMutex>
 
 namespace ModAI {
 
@@ -49,6 +51,9 @@ private:
     std::string dataPath_;
     
     QThread* workerThread_;
+    QQueue<ContentItem> processingQueue_;
+    QMutex queueMutex_;
+    bool processingActive_;
     
     void setupUI();
     void setupConnections();
@@ -59,6 +64,8 @@ private slots:
     void onStartScraping();
     void onStopScraping();
     void onItemProcessed(const ContentItem& item);
+    void onItemScraped(const ContentItem& item);
+    void processNextItem();
     void onTableSelectionChanged(const QItemSelection& selected, const QItemSelection& deselected);
     void onReviewRequested(const std::string& itemId);
     void onOverrideAction(const std::string& itemId, const std::string& newStatus);

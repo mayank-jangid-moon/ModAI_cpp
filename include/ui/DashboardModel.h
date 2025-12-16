@@ -24,6 +24,7 @@ public:
     void clear();
     ContentItem getItem(int row) const;
     void updateItem(int row, const ContentItem& item);
+    int findRowById(const std::string& id) const;
     
     Qt::ItemFlags flags(const QModelIndex& index) const override;
 };

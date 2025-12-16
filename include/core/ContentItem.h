@@ -4,6 +4,7 @@
 #include <map>
 #include <chrono>
 #include <optional>
+#include <QMetaType>
 
 namespace ModAI {
 
@@ -58,4 +59,7 @@ public:
 };
 
 } // namespace ModAI
+
+// Register with Qt's meta-type system for signal/slot usage
+Q_DECLARE_METATYPE(ModAI::ContentItem)
 

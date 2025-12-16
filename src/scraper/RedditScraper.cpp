@@ -103,21 +103,38 @@ std::vector<ContentItem> RedditScraper::fetchPosts(const std::string& subreddit)
     }
     
     try {
+        Logger::info("Fetching from URL: " + url);
         HttpResponse response = httpClient_->get(url, req.headers);
         
+        Logger::info("Response status: " + std::to_string(response.statusCode) + ", success: " + (response.success ? "true" : "false"));
+        
         if (response.success && response.statusCode == 200) {
+            // Log first 500 chars of response for debugging
+            std::string preview = response.body.substr(0, std::min(size_t(500), response.body.size()));
+            Logger::info("Response preview: " + preview);
+            
             auto json = nlohmann::json::parse(response.body);
             
             if (json.contains("data") && json["data"].contains("children")) {
-                for (const auto& child : json["data"]["children"]) {
+                auto& children = json["data"]["children"];
+                Logger::info("Found " + std::to_string(children.size()) + " children in response");
+                
+                for (const auto& child : children) {
                     if (child.contains("data")) {
                         ContentItem item = parsePost(child["data"]);
                         items.push_back(item);
                     }
                 }
+                Logger::info("Fetched " + std::to_string(items.size()) + " posts from r/" + subreddit);
+            } else {
+                Logger::warn("No data/children in Reddit response for r/" + subreddit);
+                Logger::warn("Response body: " + response.body.substr(0, 1000));
             }
         } else {
-            Logger::warn("Failed to fetch posts from " + subreddit + ": " + response.errorMessage);
+            Logger::warn("Failed to fetch posts from " + subreddit + ": HTTP " + std::to_string(response.statusCode) + " - " + response.errorMessage);
+            if (!response.body.empty()) {
+                Logger::warn("Error response body: " + response.body.substr(0, 500));
+            }
         }
     } catch (const std::exception& e) {
         Logger::error("Exception fetching posts: " + std::string(e.what()));
@@ -257,6 +274,7 @@ void RedditScraper::performScrape() {
     
     for (const auto& subreddit : subreddits_) {
         auto posts = fetchPosts(subreddit);
+        Logger::info("Got " + std::to_string(posts.size()) + " posts to process");
         for (const auto& item : posts) {
             if (onItemScraped_) {
                 onItemScraped_(item);
@@ -264,6 +282,7 @@ void RedditScraper::performScrape() {
         }
         
         auto comments = fetchComments(subreddit);
+        Logger::info("Got " + std::to_string(comments.size()) + " comments to process");
         for (const auto& item : comments) {
             if (onItemScraped_) {
                 onItemScraped_(item);

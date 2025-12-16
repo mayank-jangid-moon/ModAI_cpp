@@ -2,7 +2,7 @@
 #include "core/ModerationEngine.h"
 #include "core/RuleEngine.h"
 #include "core/ResultCache.h"
-#include "detectors/HFTextDetector.h"
+#include "detectors/LocalAIDetector.h"
 #include "detectors/HiveImageModerator.h"
 #include "detectors/HiveTextModerator.h"
 #include "network/QtHttpClient.h"
@@ -30,7 +30,11 @@ MainWindow::MainWindow(QWidget* parent)
     , model_(nullptr)
     , detailPanel_(nullptr)
     , railguardOverlay_(nullptr)
-    , workerThread_(nullptr) {
+    , workerThread_(nullptr)
+    , processingActive_(false) {
+    
+    // Register ContentItem as Qt meta-type for cross-thread signals
+    qRegisterMetaType<ContentItem>("ContentItem");
     
     setupUI();
     setupConnections();
@@ -43,18 +47,11 @@ MainWindow::MainWindow(QWidget* parent)
     Logger::info("Application started");
     
     // Load API keys from secure storage
-    std::string hfToken = Crypto::getApiKey("huggingface_token");
     std::string hiveKey = Crypto::getApiKey("hive_api_key");
     std::string redditClientId = Crypto::getApiKey("reddit_client_id");
     std::string redditClientSecret = Crypto::getApiKey("reddit_client_secret");
     
-    if (hfToken.empty() && hiveKey.empty()) {
-        Logger::warn("No API keys configured - using public Reddit scraping only");
-        statusBar()->showMessage("⚠ No API keys - detection features disabled. Scraping only.", 0);
-    } else if (hfToken.empty()) {
-        Logger::warn("No HuggingFace token - AI text detection disabled");
-        statusBar()->showMessage("⚠ HuggingFace token missing - AI detection disabled", 0);
-    } else if (hiveKey.empty()) {
+    if (hiveKey.empty()) {
         Logger::warn("No Hive API key - moderation disabled");
         statusBar()->showMessage("⚠ Hive API key missing - moderation disabled", 0);
     }
@@ -62,9 +59,34 @@ MainWindow::MainWindow(QWidget* parent)
     // Create HTTP client
     auto httpClient = std::make_unique<QtHttpClient>(this);
     
-    // Create detectors
-    auto textDetector = std::make_unique<HFTextDetector>(
-        std::make_unique<QtHttpClient>(this), hfToken);
+    // Initialize local AI model for text detection
+    std::string modelPath = dataPath_ + "/models/ai_detector.onnx";
+    std::string tokenizerPath = dataPath_ + "/models";
+    
+    std::unique_ptr<TextDetector> textDetector;
+    
+    // Use local ONNX model only
+    auto localDetector = std::make_unique<LocalAIDetector>(modelPath, tokenizerPath, 768, 0.5f);
+    if (localDetector->isAvailable()) {
+        Logger::info("Local ONNX AI detector initialized (desklib/ai-text-detector-v1.01)");
+        statusBar()->showMessage("✓ Local AI detection enabled", 3000);
+        textDetector = std::move(localDetector);
+    } else {
+        Logger::error("Local AI model not available. Please export the model first:");
+        Logger::error("  python3 scripts/export_model_to_onnx.py --output " + dataPath_ + "/models");
+        statusBar()->showMessage("❌ AI model not found - please export model (see logs)", 0);
+        
+        QMessageBox::warning(this, "AI Model Not Found",
+            "Local AI detection model not found.\n\n"
+            "Please export the model by running:\n"
+            "  python3 scripts/export_model_to_onnx.py --output " +
+            QString::fromStdString(dataPath_) + "/models\n\n"
+            "The application will continue without AI detection.");
+        
+        // Create a disabled detector
+        textDetector = std::make_unique<LocalAIDetector>(modelPath, tokenizerPath, 768, 0.5f);
+    }
+    
     auto imageModerator = std::make_unique<HiveImageModerator>(
         std::make_unique<QtHttpClient>(this), hiveKey);
     auto textModerator = std::make_unique<HiveTextModerator>(
@@ -124,8 +146,9 @@ MainWindow::MainWindow(QWidget* parent)
     );
     
     scraper_->setOnItemScraped([this](const ContentItem& item) {
-        // Process item through moderation engine on the main thread to avoid cross-thread QNetwork issues
-        moderationEngine_->processItem(item);
+        // Add to queue for sequential processing
+        QMetaObject::invokeMethod(this, "onItemScraped", Qt::QueuedConnection,
+                                  Q_ARG(ContentItem, item));
     });
     
     // Do not auto-load old records on startup; user can load via menu.
@@ -275,7 +298,43 @@ void MainWindow::onStopScraping() {
     statusLabel_->setText("Stopped");
 }
 
+void MainWindow::onItemScraped(const ContentItem& item) {
+    // Add item to processing queue (don't show in UI until processed)
+    {
+        QMutexLocker locker(&queueMutex_);
+        processingQueue_.enqueue(item);
+    }
+    
+    // Start processing if not already active
+    if (!processingActive_) {
+        processingActive_ = true;
+        processNextItem();
+    }
+}
+
+void MainWindow::processNextItem() {
+    ContentItem item;
+    
+    {
+        QMutexLocker locker(&queueMutex_);
+        if (processingQueue_.isEmpty()) {
+            processingActive_ = false;
+            return;
+        }
+        item = processingQueue_.dequeue();
+    }
+    
+    // Process in background thread
+    QtConcurrent::run([this, item]() {
+        moderationEngine_->processItem(item);
+        
+        // Process next item after this one completes
+        QMetaObject::invokeMethod(this, "processNextItem", Qt::QueuedConnection);
+    });
+}
+
 void MainWindow::onItemProcessed(const ContentItem& item) {
+    // Add item to UI after processing is complete
     model_->addItem(item);
     
     // Show railguard if blocked
