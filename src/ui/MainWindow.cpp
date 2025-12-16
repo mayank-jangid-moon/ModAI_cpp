@@ -257,6 +257,8 @@ void MainWindow::setupConnections() {
             this, &MainWindow::onReviewRequested);
     connect(railguardOverlay_, &RailguardOverlay::overrideAction,
             this, &MainWindow::onOverrideAction);
+    connect(detailPanel_, &DetailPanel::processCommentsRequested,
+            this, &MainWindow::onProcessCommentsRequested);
             
     connect(searchInput_, &QLineEdit::textChanged, this, &MainWindow::onSearchTextChanged);
     connect(filterCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onFilterChanged);
@@ -293,9 +295,18 @@ void MainWindow::onStartScraping() {
 
 void MainWindow::onStopScraping() {
     scraper_->stop();
+    
+    // Clear the processing queue
+    {
+        QMutexLocker locker(&queueMutex_);
+        processingQueue_.clear();
+        processingActive_ = false;
+    }
+    
     startButton_->setEnabled(true);
     stopButton_->setEnabled(false);
     statusLabel_->setText("Stopped");
+    Logger::info("Scraping stopped and processing queue cleared");
 }
 
 void MainWindow::onItemScraped(const ContentItem& item) {
@@ -419,6 +430,37 @@ void MainWindow::onLoadHistory() {
         return;
     }
     loadExistingData();
+}
+
+void MainWindow::onProcessCommentsRequested(const std::string& subreddit, const std::string& postId) {
+    Logger::info("Fetching comments for post " + postId + " in r/" + subreddit);
+    
+    if (!scraper_) {
+        Logger::error("Scraper not initialized");
+        return;
+    }
+    
+    // Fetch comments in background thread
+    QtConcurrent::run([this, subreddit, postId]() {
+        try {
+            auto comments = scraper_->fetchPostComments(subreddit, postId);
+            Logger::info("Processing " + std::to_string(comments.size()) + " comments");
+            
+            // Queue each comment for processing
+            for (const auto& comment : comments) {
+                QMetaObject::invokeMethod(this, "onItemScraped", Qt::QueuedConnection,
+                                          Q_ARG(ContentItem, comment));
+            }
+            
+            // Re-enable button on UI thread
+            QMetaObject::invokeMethod(this, [this]() {
+                statusBar()->showMessage("Comments queued for processing", 3000);
+            }, Qt::QueuedConnection);
+            
+        } catch (const std::exception& e) {
+            Logger::error("Error fetching comments: " + std::string(e.what()));
+        }
+    });
 }
 
 void MainWindow::cleanupOnExit() {

@@ -44,6 +44,7 @@ public:
     std::string content_type;  // "text" or "image"
     std::optional<std::string> text;
     std::optional<std::string> image_path;
+    std::optional<std::string> post_id;  // Reddit post ID for fetching comments
     
     AIDetection ai_detection;
     ModerationResult moderation;

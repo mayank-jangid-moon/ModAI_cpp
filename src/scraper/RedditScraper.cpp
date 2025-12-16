@@ -148,6 +148,22 @@ ContentItem RedditScraper::parsePost(const nlohmann::json& postJson) {
     item.subreddit = postJson.value("subreddit", "");
     item.source = "reddit";
     
+    // Extract Reddit post ID (e.g., "1po4bx2" from "t3_1po4bx2")
+    if (postJson.contains("name")) {
+        std::string fullId = postJson["name"].get<std::string>();
+        // Remove "t3_" prefix if present
+        if (fullId.find("t3_") == 0) {
+            item.post_id = fullId.substr(3);
+        } else {
+            item.post_id = fullId;
+        }
+    }
+    
+    // Also store it as the item ID
+    if (postJson.contains("id")) {
+        item.id = postJson["id"].get<std::string>();
+    }
+    
     if (postJson.contains("author")) {
         item.author = postJson["author"].get<std::string>();
     }
@@ -183,6 +199,74 @@ ContentItem RedditScraper::parsePost(const nlohmann::json& postJson) {
     }
     
     return item;
+}
+
+std::vector<ContentItem> RedditScraper::fetchPostComments(const std::string& subreddit, const std::string& postId) {
+    std::vector<ContentItem> items;
+    
+    rateLimiter_->waitIfNeeded();
+    authenticate();
+    
+    const bool useOAuth = !accessToken_.empty();
+    std::string url = useOAuth
+        ? "https://oauth.reddit.com/r/" + subreddit + "/comments/" + postId + ".json"
+        : "https://www.reddit.com/r/" + subreddit + "/comments/" + postId + ".json";
+    
+    HttpRequest req;
+    req.url = url;
+    req.method = "GET";
+    req.headers["User-Agent"] = userAgent_;
+    if (useOAuth) {
+        req.headers["Authorization"] = "Bearer " + accessToken_;
+    }
+    
+    try {
+        Logger::info("Fetching comments from URL: " + url);
+        HttpResponse response = httpClient_->get(url, req.headers);
+        
+        if (response.success && response.statusCode == 200) {
+            auto json = nlohmann::json::parse(response.body);
+            
+            // Reddit returns an array with 2 elements: [0]=post, [1]=comments
+            if (json.is_array() && json.size() >= 2) {
+                auto& commentsListing = json[1];
+                
+                if (commentsListing.contains("data") && commentsListing["data"].contains("children")) {
+                    parseCommentsRecursive(commentsListing["data"]["children"], items);
+                    Logger::info("Fetched " + std::to_string(items.size()) + " comments for post " + postId);
+                }
+            }
+        } else {
+            Logger::warn("Failed to fetch comments for post " + postId + ": HTTP " + std::to_string(response.statusCode));
+        }
+    } catch (const std::exception& e) {
+        Logger::error("Exception fetching post comments: " + std::string(e.what()));
+    }
+    
+    return items;
+}
+
+void RedditScraper::parseCommentsRecursive(const nlohmann::json& children, std::vector<ContentItem>& items) {
+    for (const auto& child : children) {
+        if (child.contains("data")) {
+            auto& data = child["data"];
+            
+            // Skip "more" comments markers
+            if (child.value("kind", "") == "more") {
+                continue;
+            }
+            
+            ContentItem item = parseComment(data);
+            items.push_back(item);
+            
+            // Recursively parse replies
+            if (data.contains("replies") && data["replies"].is_object()) {
+                if (data["replies"].contains("data") && data["replies"]["data"].contains("children")) {
+                    parseCommentsRecursive(data["replies"]["data"]["children"], items);
+                }
+            }
+        }
+    }
 }
 
 std::string RedditScraper::downloadImage(const std::string& url) {
@@ -276,14 +360,6 @@ void RedditScraper::performScrape() {
         auto posts = fetchPosts(subreddit);
         Logger::info("Got " + std::to_string(posts.size()) + " posts to process");
         for (const auto& item : posts) {
-            if (onItemScraped_) {
-                onItemScraped_(item);
-            }
-        }
-        
-        auto comments = fetchComments(subreddit);
-        Logger::info("Got " + std::to_string(comments.size()) + " comments to process");
-        for (const auto& item : comments) {
             if (onItemScraped_) {
                 onItemScraped_(item);
             }

@@ -38,6 +38,7 @@ private:
     std::vector<ContentItem> fetchComments(const std::string& subreddit);
     ContentItem parsePost(const nlohmann::json& postJson);
     ContentItem parseComment(const nlohmann::json& commentJson);
+    void parseCommentsRecursive(const nlohmann::json& children, std::vector<ContentItem>& items);
     std::string downloadImage(const std::string& url);
 
 public:
@@ -54,6 +55,9 @@ public:
     bool isScraping() const { return isRunning_; }
     
     void setOnItemScraped(std::function<void(const ContentItem&)> callback);
+    
+    // Fetch comments for a specific post
+    std::vector<ContentItem> fetchPostComments(const std::string& subreddit, const std::string& postId);
 
 private slots:
     void performScrape();

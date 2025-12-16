@@ -41,11 +41,21 @@ QVariant DashboardModel::data(const QModelIndex& index, int role) const {
             case 5: return QString::number(item.ai_detection.ai_score, 'f', 2);
             case 6: {
                 QString labels;
-                if (item.moderation.labels.sexual > 0.5) labels += "sexual ";
-                if (item.moderation.labels.violence > 0.5) labels += "violence ";
-                if (item.moderation.labels.hate > 0.5) labels += "hate ";
-                if (item.moderation.labels.drugs > 0.5) labels += "drugs ";
-                return labels.isEmpty() ? QString("none") : labels;
+                // Show any non-zero labels (Hive scale: 0-3 converted to 0.0-1.0)
+                // Value 1 (mild) = 0.33, Value 2 (medium) = 0.67, Value 3 (high) = 1.0
+                if (item.moderation.labels.sexual > 0.0) labels += "sexual ";
+                if (item.moderation.labels.violence > 0.0) labels += "violence ";
+                if (item.moderation.labels.hate > 0.0) labels += "hate ";
+                if (item.moderation.labels.drugs > 0.0) labels += "drugs ";
+                
+                // Add additional labels
+                for (const auto& [label, conf] : item.moderation.labels.additional_labels) {
+                    if (conf > 0.0) {
+                        labels += QString::fromStdString(label) + " ";
+                    }
+                }
+                
+                return labels.isEmpty() ? QString("none") : labels.trimmed();
             }
             case 7: return QString::fromStdString(item.decision.auto_action);
             case 8: return QString("View");

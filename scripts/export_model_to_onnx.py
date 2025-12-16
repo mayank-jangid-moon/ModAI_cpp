@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 """
 Export desklib/ai-text-detector-v1.01 model to ONNX format for local C++ inference
 """

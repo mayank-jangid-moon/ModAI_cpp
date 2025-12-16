@@ -72,6 +72,7 @@ private slots:
     void onSearchTextChanged(const QString& text);
     void onFilterChanged(int index);
     void onLoadHistory();
+    void onProcessCommentsRequested(const std::string& subreddit, const std::string& postId);
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);

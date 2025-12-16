@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QThread>
 #include "utils/Logger.h"
 
 namespace ModAI {
@@ -15,7 +16,23 @@ namespace ModAI {
 QtHttpClient::QtHttpClient(QObject* parent)
     : QObject(parent)
     , networkManager_(std::make_unique<QNetworkAccessManager>(this))
+    , creationThread_(QThread::currentThread())
     , timeoutMs_(30000) {
+}
+
+QNetworkAccessManager* QtHttpClient::getNetworkManager() {
+    // If we're in a different thread, create a thread-local network manager
+    if (QThread::currentThread() != creationThread_) {
+        // Thread-local storage ensures one manager per worker thread
+        static thread_local std::unique_ptr<QNetworkAccessManager> threadLocalManager;
+        if (!threadLocalManager) {
+            threadLocalManager = std::make_unique<QNetworkAccessManager>(nullptr);
+            Logger::info("Created thread-local QNetworkAccessManager for thread: " + 
+                        std::to_string(reinterpret_cast<uintptr_t>(QThread::currentThread())));
+        }
+        return threadLocalManager.get();
+    }
+    return networkManager_.get();
 }
 
 QNetworkRequest QtHttpClient::createRequest(const std::string& url, const std::map<std::string, std::string>& headers) {
@@ -50,6 +67,9 @@ HttpResponse QtHttpClient::executeRequest(QNetworkReply* reply) {
         
         if (!response.success) {
             response.errorMessage = reply->errorString().toStdString();
+            Logger::debug("Qt HTTP error code: " + std::to_string(static_cast<int>(reply->error())) + 
+                         ", HTTP status: " + std::to_string(response.statusCode) +
+                         ", Body length: " + std::to_string(response.body.length()));
         }
         
         // Read headers
@@ -89,7 +109,7 @@ HttpResponse QtHttpClient::post(const HttpRequest& req) {
             multiPart->append(filePart);
             
             request.setRawHeader("Content-Type", "multipart/form-data; boundary=" + multiPart->boundary());
-            reply = networkManager_->post(request, multiPart);
+            reply = getNetworkManager()->post(request, multiPart);
             multiPart->setParent(reply);
         } else {
             if (!req.contentType.empty()) {
@@ -105,7 +125,7 @@ HttpResponse QtHttpClient::post(const HttpRequest& req) {
                 data = QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), req.binaryData.size());
             }
             
-            reply = networkManager_->post(request, data);
+            reply = getNetworkManager()->post(request, data);
         }
         
         response = executeRequest(reply);
@@ -146,7 +166,7 @@ HttpResponse QtHttpClient::get(const std::string& url, const std::map<std::strin
     
     while (retries <= maxRetries_) {
         QNetworkRequest request = createRequest(url, headers);
-        QNetworkReply* reply = networkManager_->get(request);
+        QNetworkReply* reply = getNetworkManager()->get(request);
         
         response = executeRequest(reply);
         

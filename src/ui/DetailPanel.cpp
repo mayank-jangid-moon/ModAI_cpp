@@ -44,17 +44,29 @@ DetailPanel::DetailPanel(QWidget* parent)
     buttonLayout->addWidget(reviewButton_);
     
     layout->addLayout(buttonLayout);
+    
+    // Process Comments button (for posts only)
+    processCommentsButton_ = new QPushButton("Process Comments");
+    processCommentsButton_->setEnabled(false);  // Initially disabled
+    layout->addWidget(processCommentsButton_);
+    
     layout->addStretch();
     
     connect(blockButton_, &QPushButton::clicked, this, &DetailPanel::onBlockClicked);
     connect(allowButton_, &QPushButton::clicked, this, &DetailPanel::onAllowClicked);
     connect(reviewButton_, &QPushButton::clicked, this, &DetailPanel::onReviewClicked);
+    connect(processCommentsButton_, &QPushButton::clicked, this, &DetailPanel::onProcessCommentsClicked);
 }
 
 void DetailPanel::setContentItem(const ContentItem& item) {
     currentItem_ = item;
     
     titleLabel_->setText(QString::fromStdString("Item: " + item.id));
+    
+    // Enable Process Comments button only for posts (not comments)
+    bool isPost = (item.source == "reddit" && item.post_id.has_value() && !item.post_id.value().empty());
+    processCommentsButton_->setEnabled(isPost);
+    processCommentsButton_->setText("Process Comments");
     
     if (item.text.has_value()) {
         contentText_->setPlainText(QString::fromStdString(item.text.value()));
@@ -130,6 +142,14 @@ void DetailPanel::onAllowClicked() {
 void DetailPanel::onReviewClicked() {
     if (!currentItem_.id.empty()) {
         emit actionRequested(currentItem_.id, "review");
+    }
+}
+
+void DetailPanel::onProcessCommentsClicked() {
+    if (currentItem_.post_id.has_value() && !currentItem_.subreddit.empty()) {
+        processCommentsButton_->setEnabled(false);
+        processCommentsButton_->setText("Processing...");
+        emit processCommentsRequested(currentItem_.subreddit, currentItem_.post_id.value());
     }
 }
 

@@ -23,6 +23,7 @@ private:
     QPushButton* blockButton_;
     QPushButton* allowButton_;
     QPushButton* reviewButton_;
+    QPushButton* processCommentsButton_;
     
     ContentItem currentItem_;
 
@@ -36,9 +37,11 @@ private slots:
     void onBlockClicked();
     void onAllowClicked();
     void onReviewClicked();
+    void onProcessCommentsClicked();
 
 signals:
     void actionRequested(const std::string& itemId, const std::string& action);
+    void processCommentsRequested(const std::string& subreddit, const std::string& postId);
 };
 
 } // namespace ModAI

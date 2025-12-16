@@ -13,9 +13,12 @@ class QtHttpClient : public QObject, public HttpClient {
 
 private:
     std::unique_ptr<QNetworkAccessManager> networkManager_;
+    QThread* creationThread_;
     int timeoutMs_;
     int maxRetries_ = 3;
     int retryDelayMs_ = 1000;
+    
+    QNetworkAccessManager* getNetworkManager();
 
 public:
     explicit QtHttpClient(QObject* parent = nullptr);
