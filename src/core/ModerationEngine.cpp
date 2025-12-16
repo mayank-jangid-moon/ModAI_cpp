@@ -1,10 +1,8 @@
 #include "core/ModerationEngine.h"
 #include "utils/Logger.h"
-#include <QFile>
-#include <QImage>
-#include <QBuffer>
-#include <QIODevice>
-#include <QCryptographicHash>
+#include "utils/Crypto.h"
+#include <fstream>
+#include <vector>
 
 namespace ModAI {
 
@@ -52,13 +50,14 @@ void ModerationEngine::processItem(ContentItem item) {
     // Run image moderation if image content exists
     if (item.content_type == "image" && item.image_path.has_value()) {
         try {
-            QFile file(QString::fromStdString(item.image_path.value()));
-            if (file.open(QIODevice::ReadOnly)) {
-                QByteArray imageData = file.readAll();
-                std::vector<uint8_t> imageBytes(imageData.begin(), imageData.end());
+            std::ifstream file(item.image_path.value(), std::ios::binary | std::ios::ate);
+            if (file.is_open()) {
+                std::streamsize size = file.tellg();
+                file.seekg(0, std::ios::beg);
+                std::vector<uint8_t> imageBytes(size);
+                file.read(reinterpret_cast<char*>(imageBytes.data()), size);
                 
-                QByteArray hash = QCryptographicHash::hash(imageData, QCryptographicHash::Sha256);
-                std::string hashStr = hash.toHex().toStdString();
+                std::string hashStr = Crypto::sha256(imageBytes);
                 
                 auto cached = cache_->get(hashStr);
                 if (cached) {

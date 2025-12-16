@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace ModAI {
 
@@ -9,6 +10,7 @@ public:
     static std::string getApiKey(const std::string& keyName);
     static void setApiKey(const std::string& keyName, const std::string& value);
     static void removeApiKey(const std::string& keyName);
+    static std::string sha256(const std::vector<uint8_t>& data);
     
 private:
     static std::string getConfigPath();

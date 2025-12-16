@@ -3,8 +3,7 @@
 #include "core/ContentItem.h"
 #include "network/HttpClient.h"
 #include "network/RateLimiter.h"
-#include <QObject>
-#include <QTimer>
+#include "core/interfaces/Scheduler.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -14,8 +13,7 @@
 
 namespace ModAI {
 
-class RedditScraper : public QObject {
-    Q_OBJECT
+class RedditScraper {
 
 private:
     std::unique_ptr<HttpClient> httpClient_;
@@ -26,7 +24,7 @@ private:
     std::chrono::steady_clock::time_point tokenExpiresAt_;
     std::string storagePath_;
     std::unique_ptr<RateLimiter> rateLimiter_;
-    QTimer* scrapeTimer_;
+    std::unique_ptr<Scheduler> scheduler_;
     
     std::vector<std::string> subreddits_;
     bool isRunning_;
@@ -39,14 +37,15 @@ private:
     ContentItem parsePost(const nlohmann::json& postJson);
     ContentItem parseComment(const nlohmann::json& commentJson);
     std::string downloadImage(const std::string& url);
+    void performScrape();
 
 public:
     RedditScraper(std::unique_ptr<HttpClient> httpClient,
+                  std::unique_ptr<Scheduler> scheduler,
                   const std::string& clientId,
                   const std::string& clientSecret,
                   const std::string& userAgent,
-                  const std::string& storagePath,
-                  QObject* parent = nullptr);
+                  const std::string& storagePath);
     
     void setSubreddits(const std::vector<std::string>& subreddits);
     void start(int intervalSeconds = 60);
@@ -54,9 +53,6 @@ public:
     bool isScraping() const { return isRunning_; }
     
     void setOnItemScraped(std::function<void(const ContentItem&)> callback);
-
-private slots:
-    void performScrape();
 };
 
 } // namespace ModAI
