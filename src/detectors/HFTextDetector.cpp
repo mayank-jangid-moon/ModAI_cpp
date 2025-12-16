@@ -77,19 +77,14 @@ TextDetectResult HFTextDetector::analyze(const std::string& text) {
                 }
             }
             // Normalize decision
-            // Apply guardrails: require AI prob to be meaningfully higher and above a floor
-            const double aiFloor = 0.70;      // minimum AI probability
-            const double margin  = 0.15;      // AI must exceed human by this margin
-            bool confidentAI = (aiProb >= aiFloor) && ((aiProb - humanProb) >= margin);
-
-            if (confidentAI) {
+            if (aiProb >= humanProb) {
                 result.label = "ai_generated";
                 result.ai_score = aiProb;
                 result.confidence = aiProb;
             } else {
                 result.label = "human";
-                result.ai_score = aiProb;       // keep raw AI prob for downstream rules
-                result.confidence = humanProb;  // human confidence dominates
+                result.ai_score = aiProb;
+                result.confidence = humanProb;
             }
         };
 
