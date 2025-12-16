@@ -46,10 +46,12 @@ include_directories(
 set(HEADERS
     include/core/ModerationEngine.h
     include/core/RuleEngine.h
+    include/core/AppController.h
     include/core/ContentItem.h
     include/core/ResultCache.h
     include/network/HttpClient.h
     include/network/QtHttpClient.h
+    include/network/HttpServer.h
     include/network/RateLimiter.h
     include/detectors/TextDetector.h
     include/detectors/LocalAIDetector.h
@@ -75,9 +77,11 @@ set(SOURCES
     src/main.cpp
     src/core/ModerationEngine.cpp
     src/core/RuleEngine.cpp
+    src/core/AppController.cpp
     src/core/ResultCache.cpp
     src/core/ContentItem.cpp
     src/network/QtHttpClient.cpp
+    src/network/HttpServer.cpp
     src/network/RateLimiter.cpp
     src/detectors/LocalAIDetector.cpp
     src/detectors/HiveImageModerator.cpp
