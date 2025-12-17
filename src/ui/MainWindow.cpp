@@ -172,9 +172,12 @@ MainWindow::MainWindow(QWidget* parent)
     aiTextDetectorPanel_->initialize(std::move(textDetectorForPanel));
     
     // AI Image Detector - needs image moderator
-    auto imageModeratorForPanel = std::make_unique<HiveImageModerator>(
+    auto imageModeratorForPanel = std::make_shared<HiveImageModerator>(
         std::make_unique<QtHttpClient>(this), hiveKey);
-    aiImageDetectorPanel_->initialize(std::move(imageModeratorForPanel));
+    aiImageDetectorPanel_->initialize(imageModeratorForPanel);
+    
+    // Also set image moderator for chatbot (for generated image moderation)
+    chatbotPanel_->setImageModerator(imageModeratorForPanel);
     
     // Do not auto-load old records on startup; user can load via menu.
 }

@@ -12,6 +12,7 @@
 #include <memory>
 #include "network/HttpClient.h"
 #include "detectors/HiveTextModerator.h"
+#include "detectors/ImageModerator.h"
 
 namespace ModAI {
 
@@ -22,6 +23,7 @@ namespace ModAI {
  * - User sends messages to an LLM (via API)
  * - LLM responses are analyzed by Hive API
  * - Offensive/inappropriate responses are blocked
+ * - Generated images are moderated and watermarked
  */
 class ChatbotPanel : public QWidget {
     Q_OBJECT
@@ -37,10 +39,16 @@ public:
                    std::unique_ptr<HiveTextModerator> textModerator,
                    const std::string& llmApiKey = "",
                    const std::string& llmEndpoint = "");
+    
+    /**
+     * @brief Set the image moderator for generated images
+     */
+    void setImageModerator(std::shared_ptr<ImageModerator> imageModerator);
 
 signals:
     void messageBlocked(const QString& reason);
     void moderationResult(const QString& message, bool passed);
+    void imageBlocked(const QString& reason);
 
 private slots:
     void onSendMessage();
@@ -49,8 +57,13 @@ private slots:
 private:
     void setupUI();
     void addMessageToChat(const QString& role, const QString& message, bool blocked = false);
+    void addImageToChat(const QString& imageUrl, const QString& prompt, bool blocked = false);
+    void addBlockedImageToChat(const QString& prompt, const QString& reason);
     void callLLM(const QString& userMessage);
+    void generateImage(const QString& prompt);
     bool moderateResponse(const std::string& response);
+    bool moderateImage(const QByteArray& imageData, const QString& mimeType);
+    QByteArray embedImageMetadata(const QByteArray& imageData, const QString& source);
     void showTypingIndicator();
     void hideTypingIndicator();
     void scrollToBottom();
@@ -77,9 +90,16 @@ public:
      * @return Model identifier or empty string if no watermark found
      */
     static QString extractWatermark(const QString& text);
+    
+    /**
+     * @brief Extract AI generation metadata from image
+     * @return Source model identifier or empty string if not found
+     */
+    static QString extractImageMetadata(const QString& imagePath);
 
     std::unique_ptr<HttpClient> httpClient_;
     std::unique_ptr<HiveTextModerator> textModerator_;
+    std::shared_ptr<ImageModerator> imageModerator_;
     std::string llmApiKey_;
     std::string llmEndpoint_;
     

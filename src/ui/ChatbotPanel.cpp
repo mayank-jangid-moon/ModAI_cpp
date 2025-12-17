@@ -7,8 +7,24 @@
 #include <QDateTime>
 #include <QFrame>
 #include <QTimer>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QImageReader>
+#include <QImageWriter>
+#include <QBuffer>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFileDialog>
+#include <QPushButton>
+#include <QRegularExpression>
+#include <cstdlib>
 
 namespace ModAI {
+
+// Constants for image metadata embedding
+static const QString AI_GENERATED_MARKER = "ModAI-Generated";
+static const QString METADATA_KEY = "ModAI-Source";
 
 ChatbotPanel::ChatbotPanel(QWidget* parent)
     : QWidget(parent)
@@ -38,6 +54,13 @@ void ChatbotPanel::initialize(std::unique_ptr<HttpClient> httpClient,
     llmEndpoint_ = "https://freeapi-v27x.onrender.com/v1/chat/completions";
     
     statusLabel_->setText("GPT-4o API configured with Hive railguard");
+}
+
+void ChatbotPanel::setImageModerator(std::shared_ptr<ImageModerator> imageModerator) {
+    imageModerator_ = imageModerator;
+    if (imageModerator_) {
+        Logger::info("Image moderator configured for chatbot");
+    }
 }
 
 void ChatbotPanel::setupUI() {
@@ -134,6 +157,9 @@ void ChatbotPanel::setupUI() {
     modelSelector_->addItem("DeepSeek R1 (Vision, Reasoning)", "provider-3/deepseek-r1-0528");
     modelSelector_->addItem("Llama 3.3 70B (Powerful)", "provider-3/llama-3.3-70b");
     modelSelector_->addItem("Qwen 2.5 72B (131K Context)", "provider-3/qwen-2.5-72b");
+    modelSelector_->addItem("--- Image Generation ---", "separator");
+    modelSelector_->addItem("FLUX Schnell (Fast Image)", "black-forest-labs/flux-schnell");
+    modelSelector_->addItem("FLUX Dev (High Quality)", "black-forest-labs/flux-dev");
     modelSelector_->setCurrentIndex(0);
     modelSelector_->setMinimumWidth(300);
     modelSelector_->setStyleSheet(
@@ -363,14 +389,26 @@ void ChatbotPanel::onSendMessage() {
     addMessageToChat("User", userMessage);
     messageInput_->clear();
     
-    // Store in conversation history
-    conversationHistory_.push_back({"user", userMessage.toStdString()});
+    // Check if using image generation model
+    QString selectedModel = modelSelector_->currentData().toString();
+    bool isImageModel = selectedModel.startsWith("black-forest-labs/");
     
-    // Call LLM
-    statusLabel_->setText("🤔 Thinking...");
-    sendButton_->setEnabled(false);
-    showTypingIndicator();
-    callLLM(userMessage);
+    if (isImageModel) {
+        // Image generation mode
+        statusLabel_->setText("Generating image...");
+        sendButton_->setEnabled(false);
+        showTypingIndicator();
+        generateImage(userMessage);
+    } else {
+        // Store in conversation history (only for text models)
+        conversationHistory_.push_back({"user", userMessage.toStdString()});
+        
+        // Call LLM
+        statusLabel_->setText("Thinking...");
+        sendButton_->setEnabled(false);
+        showTypingIndicator();
+        callLLM(userMessage);
+    }
 }
 
 void ChatbotPanel::onClearChat() {
@@ -531,6 +569,692 @@ bool ChatbotPanel::moderateResponse(const std::string& response) {
     }
 }
 
+void ChatbotPanel::generateImage(const QString& prompt) {
+    if (!httpClient_) {
+        hideTypingIndicator();
+        addMessageToChat("System", "Error: HTTP client not initialized", true);
+        sendButton_->setEnabled(true);
+        statusLabel_->setText("Error");
+        return;
+    }
+    
+    try {
+        QString selectedModel = modelSelector_->currentData().toString();
+        QString modelDisplayName = modelSelector_->currentText();
+        
+        // Construct request for Nebius image API
+        nlohmann::json payload;
+        payload["model"] = selectedModel.toStdString();
+        payload["prompt"] = prompt.toStdString();
+        
+        HttpRequest req;
+        req.url = "https://api.tokenfactory.nebius.com/v1/images/generations";
+        req.method = "POST";
+        req.headers["Content-Type"] = "application/json";
+        req.headers["Accept"] = "*/*";
+        
+        // Get API key from environment
+        const char* apiKey = std::getenv("NEBIUS_API_KEY");
+        if (!apiKey || std::string(apiKey).empty()) {
+            hideTypingIndicator();
+            addMessageToChat("System", "Error: NEBIUS_API_KEY environment variable not set", true);
+            sendButton_->setEnabled(true);
+            statusLabel_->setText("API key missing");
+            return;
+        }
+        req.headers["Authorization"] = "Bearer " + std::string(apiKey);
+        req.body = payload.dump();
+        
+        Logger::info("Calling Nebius Image API with model: " + selectedModel.toStdString());
+        
+        HttpResponse response = httpClient_->post(req);
+        
+        if (response.statusCode != 200) {
+            hideTypingIndicator();
+            addMessageToChat("System", "API Error: Status " + QString::number(response.statusCode), true);
+            statusLabel_->setText("API Error");
+            sendButton_->setEnabled(true);
+            return;
+        }
+        
+        // Parse response
+        auto jsonResponse = nlohmann::json::parse(response.body);
+        
+        if (jsonResponse.contains("data") && !jsonResponse["data"].empty()) {
+            std::string imageUrl = jsonResponse["data"][0]["url"].get<std::string>();
+            Logger::info("Image generated: " + imageUrl);
+            
+            // Download and moderate the image
+            statusLabel_->setText("Moderating image...");
+            addImageToChat(QString::fromStdString(imageUrl), prompt, false);
+        } else {
+            hideTypingIndicator();
+            addMessageToChat("System", "Error: No image in response", true);
+            statusLabel_->setText("Generation failed");
+        }
+        
+    } catch (const std::exception& e) {
+        hideTypingIndicator();
+        addMessageToChat("System", "Exception: " + QString::fromStdString(e.what()), true);
+        statusLabel_->setText("Error");
+        Logger::error("Image generation error: " + std::string(e.what()));
+    }
+    
+    sendButton_->setEnabled(true);
+}
+
+bool ChatbotPanel::moderateImage(const QByteArray& imageData, const QString& mimeType) {
+    if (!imageModerator_) {
+        Logger::warn("Image moderator not configured - skipping moderation");
+        return true; // Allow if no moderator
+    }
+    
+    try {
+        std::vector<uint8_t> imageBytes(imageData.begin(), imageData.end());
+        auto result = imageModerator_->analyzeImage(imageBytes, mimeType.toStdString());
+        
+        // Define harmful categories to check - all "yes_*" and positive indicators
+        static const std::vector<std::string> harmfulCategories = {
+            // Sexual content
+            "general_nsfw",
+            "general_suggestive",
+            "yes_female_nudity",
+            "yes_male_nudity",
+            "yes_sexual_activity",
+            "yes_sexual_intent",
+            "yes_female_underwear",
+            "yes_male_underwear",
+            "yes_sex_toy",
+            "yes_realistic_nsfw",
+            "yes_undressed",
+            "yes_cleavage",
+            "yes_bra",
+            "yes_panties",
+            "yes_negligee",
+            "yes_female_swimwear",
+            "yes_male_shirtless",
+            "yes_miniskirt",
+            "yes_bodysuit",
+            "yes_sports_bra",
+            "yes_sportswear_bottoms",
+            "yes_bulge",
+            "yes_breast",
+            "yes_genitals",
+            "yes_butt",
+            // Violence
+            "gun_in_hand",
+            "gun_not_in_hand",
+            "animated_gun",
+            "knife_in_hand",
+            "knife_not_in_hand",
+            "culinary_knife_in_hand",
+            "culinary_knife_not_in_hand",
+            "very_bloody",
+            "a_little_bloody",
+            "other_blood",
+            "yes_fight",
+            "human_corpse",
+            "animated_corpse",
+            "yes_self_harm",
+            "hanging",
+            "noose",
+            // Drugs
+            "yes_pills",
+            "yes_smoking",
+            "illicit_injectables",
+            "medical_injectables",
+            "yes_marijuana",
+            "yes_alcohol",
+            "yes_drinking_alcohol",
+            "animated_alcohol",
+            // Hate symbols
+            "yes_nazi",
+            "yes_kkk",
+            "yes_terrorist",
+            "yes_confederate",
+            // Other harmful
+            "yes_middle_finger",
+            "yes_child_present",
+            "yes_animal_abuse",
+            "yes_emaciated_body",
+            "yes_gambling",
+            "yes_religious_icon",
+            "kissing",
+            "licking",
+            "animal_genitalia_and_human",
+            "animal_genitalia_only",
+            "animated_animal_genitalia"
+        };
+        
+        // Log all labels for debugging (exclude no_ labels which indicate safe content)
+        Logger::debug("Hive Visual Moderation labels (score > 0.1):");
+        for (const auto& [category, score] : result.labels) {
+            if (score > 0.1 && category.substr(0, 3) != "no_") {
+                Logger::debug("  " + category + ": " + std::to_string(score));
+            }
+        }
+        
+        // Check for harmful content - single threshold for all
+        const float threshold = 0.5f;  // 50% threshold
+        
+        for (const auto& category : harmfulCategories) {
+            auto it = result.labels.find(category);
+            if (it != result.labels.end()) {
+                float score = static_cast<float>(it->second);
+                
+                if (score >= threshold) {
+                    Logger::info("Image blocked - " + category + ": " + std::to_string(score));
+                    return false;
+                }
+            }
+        }
+        
+        Logger::info("Image passed moderation");
+        return true;
+    } catch (const std::exception& e) {
+        Logger::error("Image moderation error: " + std::string(e.what()));
+        return false; // Fail closed
+    }
+}
+
+QByteArray ChatbotPanel::embedImageMetadata(const QByteArray& imageData, const QString& source) {
+    // Load the image
+    QImage image;
+    image.loadFromData(imageData);
+    
+    if (image.isNull()) {
+        Logger::warn("Could not load image for metadata embedding");
+        return imageData;
+    }
+    
+    // Add text metadata to the image
+    image.setText(METADATA_KEY, source);
+    image.setText("AI-Generated", AI_GENERATED_MARKER);
+    image.setText("Generator", "ModAI-Chatbot");
+    image.setText("Timestamp", QDateTime::currentDateTime().toString(Qt::ISODate));
+    
+    // Save as PNG to preserve metadata
+    QByteArray output;
+    QBuffer buffer(&output);
+    buffer.open(QIODevice::WriteOnly);
+    
+    QImageWriter writer(&buffer, "PNG");
+    writer.setText(METADATA_KEY, source);
+    writer.setText("AI-Generated", AI_GENERATED_MARKER);
+    
+    if (writer.write(image)) {
+        Logger::info("Embedded metadata in image: " + source.toStdString());
+        return output;
+    }
+    
+    // Fallback: save without custom writer
+    image.save(&buffer, "PNG");
+    return output;
+}
+
+QString ChatbotPanel::extractImageMetadata(const QString& imagePath) {
+    QImageReader reader(imagePath);
+    
+    // Try to read metadata
+    QString source = reader.text(METADATA_KEY);
+    if (!source.isEmpty()) {
+        return source;
+    }
+    
+    // Alternative: check for AI-Generated marker
+    QString aiMarker = reader.text("AI-Generated");
+    if (aiMarker == AI_GENERATED_MARKER) {
+        QString generator = reader.text("Generator");
+        if (!generator.isEmpty()) {
+            return generator;
+        }
+        return "Unknown AI Generator";
+    }
+    
+    return QString(); // No metadata found
+}
+
+void ChatbotPanel::addBlockedImageToChat(const QString& prompt, const QString& reason) {
+    // Create blocked image bubble - styled like blocked message
+    auto* bubbleContainer = new QWidget(chatContainer_);
+    auto* containerLayout = new QHBoxLayout(bubbleContainer);
+    containerLayout->setContentsMargins(10, 5, 10, 5);
+    
+    auto* bubble = new QFrame(bubbleContainer);
+    bubble->setMaximumWidth(420);
+    
+    auto* bubbleLayout = new QVBoxLayout(bubble);
+    bubbleLayout->setContentsMargins(12, 10, 12, 10);
+    bubbleLayout->setSpacing(6);
+    
+    // Blocked icon and message
+    auto* blockedLabel = new QLabel("[Image Blocked by Hive Moderation]", bubble);
+    blockedLabel->setAlignment(Qt::AlignCenter);
+    blockedLabel->setStyleSheet(
+        "QLabel { "
+        "  color: #c62828; "
+        "  font-weight: bold; "
+        "  font-size: 11pt; "
+        "  padding: 20px; "
+        "}"
+    );
+    bubbleLayout->addWidget(blockedLabel);
+    
+    // Reason
+    auto* reasonLabel = new QLabel("Reason: " + reason, bubble);
+    reasonLabel->setWordWrap(true);
+    reasonLabel->setAlignment(Qt::AlignCenter);
+    reasonLabel->setStyleSheet("color: #c62828; font-size: 9pt;");
+    bubbleLayout->addWidget(reasonLabel);
+    
+    // Original prompt
+    auto* promptLabel = new QLabel("Prompt: " + prompt, bubble);
+    promptLabel->setWordWrap(true);
+    promptLabel->setStyleSheet("color: #666; font-size: 9pt; font-style: italic; padding: 4px 0px;");
+    bubbleLayout->addWidget(promptLabel);
+    
+    // Timestamp
+    auto* timeLabel = new QLabel(QDateTime::currentDateTime().toString("hh:mm"), bubble);
+    timeLabel->setAlignment(Qt::AlignRight);
+    timeLabel->setStyleSheet("color: rgba(198, 40, 40, 0.7); font-size: 8pt;");
+    bubbleLayout->addWidget(timeLabel);
+    
+    // Blocked style (red)
+    bubble->setStyleSheet(
+        "QFrame { "
+        "  background-color: #ffebee; "
+        "  color: #c62828; "
+        "  border-radius: 18px; "
+        "  border: 1px solid #ef9a9a; "
+        "}"
+    );
+    
+    containerLayout->addWidget(bubble);
+    containerLayout->addStretch();
+    
+    // Add to layout
+    if (chatLayout_->count() > 0) {
+        QLayoutItem* item = chatLayout_->itemAt(chatLayout_->count() - 1);
+        if (item && item->spacerItem()) {
+            chatLayout_->takeAt(chatLayout_->count() - 1);
+            delete item;
+        }
+    }
+    
+    chatLayout_->addWidget(bubbleContainer);
+    chatLayout_->addStretch();
+    scrollToBottom();
+    
+    emit imageBlocked(reason);
+}
+
+void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt, bool blocked) {
+    // Create image bubble - styled like assistant chat bubble (left-aligned, white)
+    auto* bubbleContainer = new QWidget(chatContainer_);
+    auto* containerLayout = new QHBoxLayout(bubbleContainer);
+    containerLayout->setContentsMargins(10, 5, 10, 5);
+    
+    auto* bubble = new QFrame(bubbleContainer);
+    bubble->setMaximumWidth(420);
+    
+    auto* bubbleLayout = new QVBoxLayout(bubble);
+    bubbleLayout->setContentsMargins(12, 10, 12, 10);
+    bubbleLayout->setSpacing(6);
+    
+    // Image label (placeholder while loading)
+    auto* imageLabel = new QLabel(bubble);
+    imageLabel->setAlignment(Qt::AlignCenter);
+    imageLabel->setMinimumSize(300, 200);
+    imageLabel->setText("Loading and moderating...");
+    imageLabel->setStyleSheet(
+        "QLabel { "
+        "  background-color: #f5f5f5; "
+        "  border-radius: 12px; "
+        "  padding: 10px; "
+        "  color: #666; "
+        "}"
+    );
+    bubbleLayout->addWidget(imageLabel);
+    
+    // Prompt caption below image
+    auto* promptLabel = new QLabel(prompt, bubble);
+    promptLabel->setWordWrap(true);
+    promptLabel->setStyleSheet("color: #555; font-size: 9pt; font-style: italic; padding: 4px 0px;");
+    bubbleLayout->addWidget(promptLabel);
+    
+    // Source label (hidden by default, shown after loading)
+    auto* sourceLabel = new QLabel(bubble);
+    sourceLabel->setWordWrap(true);
+    sourceLabel->setStyleSheet("color: #0066cc; font-size: 8pt; padding: 2px 0px;");
+    sourceLabel->hide();
+    bubbleLayout->addWidget(sourceLabel);
+    
+    // Download button (hidden by default, shown after loading)
+    auto* downloadBtn = new QPushButton("Save Image", bubble);
+    downloadBtn->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #4CAF50; "
+        "  color: white; "
+        "  border: none; "
+        "  border-radius: 12px; "
+        "  padding: 8px 16px; "
+        "  font-size: 9pt; "
+        "  font-weight: bold; "
+        "} "
+        "QPushButton:hover { background-color: #45a049; } "
+        "QPushButton:pressed { background-color: #3d8b40; }"
+    );
+    downloadBtn->setCursor(Qt::PointingHandCursor);
+    downloadBtn->hide();
+    bubbleLayout->addWidget(downloadBtn);
+    
+    // Timestamp
+    auto* timeLabel = new QLabel(QDateTime::currentDateTime().toString("hh:mm"), bubble);
+    timeLabel->setAlignment(Qt::AlignRight);
+    timeLabel->setStyleSheet("color: rgba(0, 0, 0, 0.5); font-size: 8pt;");
+    bubbleLayout->addWidget(timeLabel);
+    
+    // Style like assistant bubble
+    bubble->setStyleSheet(
+        "QFrame { "
+        "  background-color: white; "
+        "  color: #333; "
+        "  border-radius: 18px; "
+        "  border: 1px solid #e0e0e0; "
+        "}"
+    );
+    
+    // Left-aligned like assistant messages
+    containerLayout->addWidget(bubble);
+    containerLayout->addStretch();
+    
+    // Remove the existing stretch at the end of the chat layout
+    if (chatLayout_->count() > 0) {
+        QLayoutItem* item = chatLayout_->itemAt(chatLayout_->count() - 1);
+        if (item && item->spacerItem()) {
+            chatLayout_->takeAt(chatLayout_->count() - 1);
+            delete item;
+        }
+    }
+    
+    chatLayout_->addWidget(bubbleContainer);
+    chatLayout_->addStretch();
+    
+    // Get model info for metadata
+    QString selectedModel = modelSelector_->currentData().toString();
+    QString modelName = modelSelector_->currentText();
+    
+    // Download, moderate, and display image asynchronously
+    QNetworkAccessManager* manager = new QNetworkAccessManager(this);
+    QNetworkRequest request{QUrl(imageUrl)};
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    
+    connect(manager, &QNetworkAccessManager::finished, 
+            [this, imageLabel, sourceLabel, downloadBtn, imageUrl, prompt, bubbleContainer, bubble, manager, selectedModel, modelName](QNetworkReply* reply) {
+        hideTypingIndicator();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray imageData = reply->readAll();
+            
+            // Determine MIME type
+            QString mimeType = "image/webp";
+            if (imageUrl.toLower().endsWith(".png")) {
+                mimeType = "image/png";
+            } else if (imageUrl.toLower().endsWith(".jpg") || imageUrl.toLower().endsWith(".jpeg")) {
+                mimeType = "image/jpeg";
+            }
+            
+            // Moderate the image
+            bool passedModeration = moderateImage(imageData, mimeType);
+            
+            if (!passedModeration) {
+                // Image blocked - update bubble to show blocked state with "Show Anyway" option
+                imageLabel->setText("[Image blocked by Hive moderation]\n\nThe generated image was flagged for potentially inappropriate content.");
+                imageLabel->setStyleSheet(
+                    "QLabel { "
+                    "  background-color: #ffebee; "
+                    "  border-radius: 12px; "
+                    "  padding: 20px; "
+                    "  color: #c62828; "
+                    "  font-weight: bold; "
+                    "}"
+                );
+                bubble->setStyleSheet(
+                    "QFrame { "
+                    "  background-color: #ffebee; "
+                    "  color: #c62828; "
+                    "  border-radius: 18px; "
+                    "  border: 1px solid #ef9a9a; "
+                    "}"
+                );
+                
+                // Add "Show Anyway" button
+                auto* showAnywayBtn = new QPushButton("Show Anyway", bubble);
+                showAnywayBtn->setStyleSheet(
+                    "QPushButton { "
+                    "  background-color: #ef5350; "
+                    "  color: white; "
+                    "  border: none; "
+                    "  border-radius: 12px; "
+                    "  padding: 8px 16px; "
+                    "  font-size: 10pt; "
+                    "}"
+                    "QPushButton:hover { background-color: #e53935; }"
+                );
+                qobject_cast<QVBoxLayout*>(bubble->layout())->insertWidget(1, showAnywayBtn, 0, Qt::AlignCenter);
+                
+                // Add "Hide Image" button (hidden initially)
+                auto* hideImageBtn = new QPushButton("Hide Image", bubble);
+                hideImageBtn->setStyleSheet(
+                    "QPushButton { "
+                    "  background-color: #78909c; "
+                    "  color: white; "
+                    "  border: none; "
+                    "  border-radius: 12px; "
+                    "  padding: 8px 16px; "
+                    "  font-size: 10pt; "
+                    "}"
+                    "QPushButton:hover { background-color: #546e7a; }"
+                );
+                qobject_cast<QVBoxLayout*>(bubble->layout())->insertWidget(2, hideImageBtn, 0, Qt::AlignCenter);
+                hideImageBtn->hide();
+                
+                // Connect show anyway button
+                connect(showAnywayBtn, &QPushButton::clicked, [this, imageLabel, sourceLabel, downloadBtn, showAnywayBtn, hideImageBtn, bubble, imageData, selectedModel, modelName, prompt]() {
+                    // Embed metadata and display (bypassing moderation)
+                    QByteArray imageWithMetadata = embedImageMetadata(imageData, selectedModel);
+                    
+                    QImage image;
+                    image.loadFromData(imageWithMetadata.isEmpty() ? imageData : imageWithMetadata);
+                    
+                    if (image.isNull()) {
+                        QBuffer buffer;
+                        buffer.setData(imageData);
+                        buffer.open(QIODevice::ReadOnly);
+                        QImageReader reader(&buffer);
+                        reader.setAutoDetectImageFormat(true);
+                        image = reader.read();
+                    }
+                    
+                    if (!image.isNull()) {
+                        QPixmap pixmap = QPixmap::fromImage(image);
+                        QPixmap scaled = pixmap.scaled(380, 380, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                        imageLabel->setPixmap(scaled);
+                        imageLabel->setStyleSheet("QLabel { background: transparent; }");
+                        
+                        sourceLabel->setText("Generated by: " + modelName + " (unmoderated)");
+                        sourceLabel->setStyleSheet("color: #c62828; font-size: 9pt;");
+                        sourceLabel->show();
+                        
+                        // Toggle buttons
+                        showAnywayBtn->hide();
+                        hideImageBtn->show();
+                        
+                        // Setup download button
+                        QByteArray finalImageData = imageWithMetadata.isEmpty() ? imageData : imageWithMetadata;
+                        downloadBtn->show();
+                        connect(downloadBtn, &QPushButton::clicked, [finalImageData, prompt]() {
+                            QString safeName = prompt.left(30).simplified();
+                            safeName.replace(QRegularExpression("[^a-zA-Z0-9 ]"), "");
+                            safeName.replace(" ", "_");
+                            if (safeName.isEmpty()) safeName = "generated_image";
+                            
+                            QString defaultPath = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) 
+                                + "/" + safeName + ".png";
+                            
+                            QString filename = QFileDialog::getSaveFileName(
+                                nullptr, "Save Image", defaultPath,
+                                "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+                            );
+                            
+                            if (!filename.isEmpty()) {
+                                QFile saveFile(filename);
+                                if (saveFile.open(QIODevice::WriteOnly)) {
+                                    saveFile.write(finalImageData);
+                                    saveFile.close();
+                                    Logger::info("User saved blocked image to: " + filename.toStdString());
+                                }
+                            }
+                        });
+                        
+                        statusLabel_->setText("Showing blocked image");
+                        Logger::info("User chose to view blocked image");
+                    }
+                });
+                
+                // Connect hide image button
+                connect(hideImageBtn, &QPushButton::clicked, [imageLabel, sourceLabel, downloadBtn, showAnywayBtn, hideImageBtn, bubble]() {
+                    // Restore blocked state
+                    imageLabel->clear();
+                    imageLabel->setText("[Image blocked by Hive moderation]\n\nThe generated image was flagged for potentially inappropriate content.");
+                    imageLabel->setStyleSheet(
+                        "QLabel { "
+                        "  background-color: #ffebee; "
+                        "  border-radius: 12px; "
+                        "  padding: 20px; "
+                        "  color: #c62828; "
+                        "  font-weight: bold; "
+                        "}"
+                    );
+                    bubble->setStyleSheet(
+                        "QFrame { "
+                        "  background-color: #ffebee; "
+                        "  color: #c62828; "
+                        "  border-radius: 18px; "
+                        "  border: 1px solid #ef9a9a; "
+                        "}"
+                    );
+                    
+                    // Toggle buttons
+                    hideImageBtn->hide();
+                    showAnywayBtn->show();
+                    downloadBtn->hide();
+                    sourceLabel->hide();
+                    
+                    Logger::info("User hid blocked image");
+                });
+                
+                
+                statusLabel_->setText("Image blocked by moderation");
+                emit imageBlocked("Content policy violation");
+            } else {
+                // Embed metadata and display
+                QByteArray imageWithMetadata = embedImageMetadata(imageData, selectedModel);
+                
+                // Load and display the image
+                QImage image;
+                image.loadFromData(imageWithMetadata.isEmpty() ? imageData : imageWithMetadata);
+                
+                if (image.isNull()) {
+                    // Try original data
+                    QBuffer buffer;
+                    buffer.setData(imageData);
+                    buffer.open(QIODevice::ReadOnly);
+                    QImageReader reader(&buffer);
+                    reader.setAutoDetectImageFormat(true);
+                    if (imageUrl.toLower().endsWith(".webp")) {
+                        reader.setFormat("webp");
+                    }
+                    image = reader.read();
+                }
+                
+                if (!image.isNull()) {
+                    QPixmap pixmap = QPixmap::fromImage(image);
+                    QPixmap scaled = pixmap.scaled(380, 380, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                    imageLabel->setPixmap(scaled);
+                    imageLabel->setStyleSheet("QLabel { background: transparent; }");
+                    
+                    // Show source info
+                    sourceLabel->setText("Generated by: " + modelName);
+                    sourceLabel->show();
+                    
+                    // Save the watermarked image locally (auto-save)
+                    QString savePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/generated_images";
+                    QDir().mkpath(savePath);
+                    QString autoSaveFilename = savePath + "/" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss") + ".png";
+                    
+                    QByteArray finalImageData = imageWithMetadata.isEmpty() ? imageData : imageWithMetadata;
+                    
+                    QFile file(autoSaveFilename);
+                    if (file.open(QIODevice::WriteOnly)) {
+                        file.write(finalImageData);
+                        file.close();
+                        Logger::info("Saved watermarked image to: " + autoSaveFilename.toStdString());
+                    }
+                    
+                    // Show download button and connect it
+                    downloadBtn->show();
+                    connect(downloadBtn, &QPushButton::clicked, [finalImageData, prompt]() {
+                        // Create a sanitized filename from prompt
+                        QString safeName = prompt.left(30).simplified();
+                        safeName.replace(QRegularExpression("[^a-zA-Z0-9 ]"), "");
+                        safeName.replace(" ", "_");
+                        if (safeName.isEmpty()) safeName = "generated_image";
+                        
+                        QString defaultPath = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) 
+                            + "/" + safeName + ".png";
+                        
+                        QString filename = QFileDialog::getSaveFileName(
+                            nullptr,
+                            "Save Image",
+                            defaultPath,
+                            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+                        );
+                        
+                        if (!filename.isEmpty()) {
+                            QFile saveFile(filename);
+                            if (saveFile.open(QIODevice::WriteOnly)) {
+                                saveFile.write(finalImageData);
+                                saveFile.close();
+                                Logger::info("User saved image to: " + filename.toStdString());
+                            }
+                        }
+                    });
+                    
+                    statusLabel_->setText("Image generated");
+                } else {
+                    imageLabel->setText("<a href='" + imageUrl + "' style='color: #0066cc;'>Click to view image</a>");
+                    imageLabel->setOpenExternalLinks(true);
+                    imageLabel->setMinimumSize(200, 50);
+                }
+            }
+        } else {
+            imageLabel->setText("Could not load image\n<a href='" + imageUrl + "' style='color: #0066cc;'>Open in browser</a>");
+            imageLabel->setOpenExternalLinks(true);
+            imageLabel->setMinimumSize(200, 50);
+            Logger::error("Image download error: " + reply->errorString().toStdString());
+            statusLabel_->setText("Download failed");
+        }
+        
+        reply->deleteLater();
+        manager->deleteLater();
+        scrollToBottom();
+    });
+    
+    manager->get(request);
+    scrollToBottom();
+}
+
 void ChatbotPanel::showTypingIndicator() {
     if (typingIndicator_ || !chatLayout_ || !chatContainer_) {
         return; // Already showing or not initialized
@@ -545,7 +1269,7 @@ void ChatbotPanel::showTypingIndicator() {
     auto* bubbleLayout = new QHBoxLayout(typingIndicator_);
     bubbleLayout->setContentsMargins(16, 10, 16, 10);
     
-    auto* typingLabel = new QLabel("💭 AI is thinking...", typingIndicator_);
+    auto* typingLabel = new QLabel("AI is thinking...", typingIndicator_);
     QFont font = typingLabel->font();
     font.setPointSize(9);
     font.setItalic(true);

@@ -3,8 +3,15 @@
 #include "utils/Logger.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <QByteArray>
 
 namespace ModAI {
+
+// Helper function to encode binary data to base64
+static std::string base64Encode(const std::vector<uint8_t>& data) {
+    QByteArray bytes(reinterpret_cast<const char*>(data.data()), data.size());
+    return bytes.toBase64().toStdString();
+}
 
 HiveImageModerator::HiveImageModerator(std::unique_ptr<HttpClient> httpClient, 
                                        const std::string& apiKey)
@@ -27,16 +34,23 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
     
     rateLimiter_->waitIfNeeded();
     
-    // Hive Visual Moderation API v3
+    // Hive Visual Moderation API v3 - expects JSON body with base64-encoded image
     std::string url = "https://api.thehive.ai/api/v3/hive/visual-moderation";
+    
+    // Build JSON request body
+    nlohmann::json requestBody;
+    requestBody["input"] = nlohmann::json::array();
+    nlohmann::json inputItem;
+    inputItem["media_base64"] = base64Encode(imageBytes);
+    requestBody["input"].push_back(inputItem);
     
     HttpRequest req;
     req.url = url;
     req.method = "POST";
     // V3 API uses Bearer token authorization
     req.headers["Authorization"] = "Bearer " + apiKey_;
-    req.contentType = "multipart/form-data";
-    req.binaryData = imageBytes;
+    req.contentType = "application/json";
+    req.body = requestBody.dump();
     
     try {
         HttpResponse response = httpClient_->post(req);
@@ -56,14 +70,24 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
         
         // Parse V3 Visual Moderation API response format
         // Expected: { "task_id": "...", "model": "hive/visual-moderation", "version": "1",
-        //            "output": [ { "classes": [ { "class_name": "general_nsfw", "value": 0.99 }, ... ] } ] }
+        //            "output": [ { "classes": [ { "class": "general_nsfw", "value": 0.99 }, ... ] } ] }
+        // Note: API returns "class" not "class_name"
         if (json.contains("output") && json["output"].is_array() && !json["output"].empty()) {
             const auto& firstOutput = json["output"][0];
             
             if (firstOutput.contains("classes") && firstOutput["classes"].is_array()) {
                 for (const auto& cls : firstOutput["classes"]) {
-                    if (cls.contains("class_name") && cls.contains("value")) {
-                        std::string className = cls["class_name"].get<std::string>();
+                    // Handle both "class" and "class_name" keys for compatibility
+                    std::string className;
+                    if (cls.contains("class")) {
+                        className = cls["class"].get<std::string>();
+                    } else if (cls.contains("class_name")) {
+                        className = cls["class_name"].get<std::string>();
+                    } else {
+                        continue;
+                    }
+                    
+                    if (cls.contains("value")) {
                         double value = cls["value"].get<double>();
                         result.labels[className] = value;
                     }

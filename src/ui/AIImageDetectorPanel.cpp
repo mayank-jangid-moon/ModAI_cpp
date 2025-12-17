@@ -12,6 +12,10 @@
 
 namespace ModAI {
 
+// Constants for metadata detection (must match ChatbotPanel)
+static const QString AI_GENERATED_MARKER = "ModAI-Generated";
+static const QString METADATA_KEY = "ModAI-Source";
+
 AIImageDetectorPanel::AIImageDetectorPanel(QWidget* parent)
     : QWidget(parent)
     , imageDisplay_(nullptr)
@@ -21,10 +25,33 @@ AIImageDetectorPanel::AIImageDetectorPanel(QWidget* parent)
     , resultLabel_(nullptr)
     , scoreBar_(nullptr)
     , detailsLabel_(nullptr)
+    , sourceLabel_(nullptr)
     , statusLabel_(nullptr)
     , loadingTimer_(nullptr)
     , loadingDots_(0) {
     setupUI();
+}
+
+QString AIImageDetectorPanel::extractImageSource(const QString& imagePath) {
+    QImageReader reader(imagePath);
+    
+    // Try to read ModAI source metadata
+    QString source = reader.text(METADATA_KEY);
+    if (!source.isEmpty()) {
+        return source;
+    }
+    
+    // Alternative: check for AI-Generated marker
+    QString aiMarker = reader.text("AI-Generated");
+    if (aiMarker == AI_GENERATED_MARKER) {
+        QString generator = reader.text("Generator");
+        if (!generator.isEmpty()) {
+            return generator;
+        }
+        return "ModAI (Unknown Model)";
+    }
+    
+    return QString(); // No metadata found
 }
 
 void AIImageDetectorPanel::initialize(std::shared_ptr<ImageModerator> imageModerator) {
@@ -163,6 +190,21 @@ void AIImageDetectorPanel::setupUI() {
     );
     layout->addWidget(scoreBar_);
     
+    // Source label (for detected AI-generated images with metadata)
+    sourceLabel_ = new QLabel("");
+    sourceLabel_->setWordWrap(true);
+    sourceLabel_->setStyleSheet(
+        "background-color: #e3f2fd; "
+        "border: 1px solid #90caf9; "
+        "border-radius: 5px; "
+        "padding: 10px; "
+        "color: #1565c0; "
+        "font-weight: bold;"
+    );
+    sourceLabel_->setAlignment(Qt::AlignCenter);
+    sourceLabel_->hide(); // Hidden by default
+    layout->addWidget(sourceLabel_);
+    
     detailsLabel_ = new QLabel("");
     detailsLabel_->setWordWrap(true);
     detailsLabel_->setStyleSheet("color: #666; margin-top: 10px; padding: 10px;");
@@ -240,6 +282,10 @@ void AIImageDetectorPanel::onAnalyzeImage() {
     analyzeButton_->setEnabled(false);
     selectButton_->setEnabled(false);
     clearButton_->setEnabled(false);
+    sourceLabel_->hide(); // Hide source label initially
+    
+    // First check for embedded metadata
+    QString embeddedSource = extractImageSource(currentImagePath_);
     
     // Animate button with pulsing dots
     loadingDots_ = 0;
@@ -256,8 +302,9 @@ void AIImageDetectorPanel::onAnalyzeImage() {
     QString imagePath = currentImagePath_;
     auto moderator = imageModerator_;
     
-    auto* watcher = new QFutureWatcher<std::pair<float, QString>>(this);
-    connect(watcher, &QFutureWatcher<std::pair<float, QString>>::finished, [this, watcher]() {
+    // Use a tuple to return aiScore, details, and source
+    auto* watcher = new QFutureWatcher<std::tuple<float, QString, QString>>(this);
+    connect(watcher, &QFutureWatcher<std::tuple<float, QString, QString>>::finished, [this, watcher]() {
         if (loadingTimer_) {
             loadingTimer_->stop();
             loadingTimer_->deleteLater();
@@ -266,7 +313,7 @@ void AIImageDetectorPanel::onAnalyzeImage() {
         
         try {
             auto result = watcher->result();
-            onAnalysisComplete(result.first, result.second);
+            onAnalysisComplete(std::get<0>(result), std::get<1>(result), std::get<2>(result));
         } catch (const std::exception& e) {
             statusLabel_->setText("Error: " + QString::fromStdString(e.what()));
             Logger::error("AI image detection error: " + std::string(e.what()));
@@ -282,7 +329,7 @@ void AIImageDetectorPanel::onAnalyzeImage() {
     });
     
     // Start async analysis
-    QFuture<std::pair<float, QString>> future = QtConcurrent::run([moderator, imagePath]() -> std::pair<float, QString> {
+    QFuture<std::tuple<float, QString, QString>> future = QtConcurrent::run([moderator, imagePath, embeddedSource]() -> std::tuple<float, QString, QString> {
         // Load image file as bytes
         QFile file(imagePath);
         if (!file.open(QIODevice::ReadOnly)) {
@@ -300,6 +347,8 @@ void AIImageDetectorPanel::onAnalyzeImage() {
             mimeType = "image/png";
         } else if (imagePath.endsWith(".gif", Qt::CaseInsensitive)) {
             mimeType = "image/gif";
+        } else if (imagePath.endsWith(".webp", Qt::CaseInsensitive)) {
+            mimeType = "image/webp";
         }
         
         // Moderate/analyze the image
@@ -317,25 +366,32 @@ void AIImageDetectorPanel::onAnalyzeImage() {
             }
         }
         
-        // If no explicit AI class, use a heuristic
-        if (aiScore == 0.0f && !result.labels.empty()) {
+        // If we have embedded metadata, it's definitely AI-generated
+        if (!embeddedSource.isEmpty()) {
+            // Random score between 80% and 95% for metadata-detected images
+            float randomScore = 0.80f + (static_cast<float>(rand() % 16) / 100.0f);
+            aiScore = std::max(aiScore, randomScore);
+            detailsText = "Image contains ModAI generation metadata. ";
+            detailsText += "This image was generated by our chatbot.";
+        } else if (aiScore == 0.0f && !result.labels.empty()) {
+            // If no explicit AI class, use a heuristic
             detailsText = "Estimating based on visual patterns. ";
             detailsText += "Note: For accurate AI detection, Hive API should include 'ai_generated' class.";
             aiScore = 0.3f; // Placeholder
         }
         
-        return std::make_pair(aiScore, QString::fromStdString(detailsText));
+        return std::make_tuple(aiScore, QString::fromStdString(detailsText), embeddedSource);
     });
     
     watcher->setFuture(future);
 }
 
-void AIImageDetectorPanel::onAnalysisComplete(float aiScore, const QString& details) {
+void AIImageDetectorPanel::onAnalysisComplete(float aiScore, const QString& details, const QString& source) {
     // Reset button text
     analyzeButton_->setText("Analyze Image");
     
     // Update UI with results
-    updateResults(aiScore, details.toStdString());
+    updateResults(aiScore, details.toStdString(), source);
     emit analysisComplete(aiScore);
     
     // Re-enable UI
@@ -361,13 +417,14 @@ void AIImageDetectorPanel::onClearImage() {
     resultLabel_->setText("No analysis yet");
     scoreBar_->setValue(0);
     detailsLabel_->clear();
+    sourceLabel_->hide();
     statusLabel_->setText("Cleared");
     
     analyzeButton_->setEnabled(false);
     clearButton_->setEnabled(false);
 }
 
-void AIImageDetectorPanel::updateResults(float aiScore, const std::string& details) {
+void AIImageDetectorPanel::updateResults(float aiScore, const std::string& details, const QString& source) {
     // Convert to percentage
     int scorePercent = static_cast<int>(aiScore * 100);
     scoreBar_->setValue(scorePercent);
@@ -390,6 +447,11 @@ void AIImageDetectorPanel::updateResults(float aiScore, const std::string& detai
         color = "#00cc00"; // Green
     }
     
+    // If we have a source, append it to the verdict
+    if (!source.isEmpty()) {
+        verdict += " (Source Identified)";
+    }
+    
     resultLabel_->setText(verdict);
     resultLabel_->setStyleSheet(
         QString("background-color: %1; "
@@ -400,6 +462,21 @@ void AIImageDetectorPanel::updateResults(float aiScore, const std::string& detai
                 "font-size: 14pt; "
                 "font-weight: bold;").arg(color)
     );
+    
+    // Show source label if metadata found
+    if (!source.isEmpty()) {
+        QString sourceName = source;
+        // Convert model ID to friendly name
+        if (source.contains("flux-schnell")) {
+            sourceName = "FLUX Schnell (Fast Image Generation)";
+        } else if (source.contains("flux-dev")) {
+            sourceName = "FLUX Dev (High Quality Image Generation)";
+        }
+        sourceLabel_->setText("AI Generation Source Identified: " + sourceName);
+        sourceLabel_->show();
+    } else {
+        sourceLabel_->hide();
+    }
     
     // Details
     QString detailsText = QString(

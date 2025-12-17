@@ -100,9 +100,10 @@ HttpResponse QtHttpClient::post(const HttpRequest& req) {
             QHttpMultiPart* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
             
             QHttpPart filePart;
-            filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("application/octet-stream"));
+            filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant("image/png"));
+            // Hive API expects field name "media" for image data
             filePart.setHeader(QNetworkRequest::ContentDispositionHeader, 
-                              QVariant("form-data; name=\"file\"; filename=\"image.jpg\""));
+                              QVariant("form-data; name=\"media\"; filename=\"image.png\""));
             filePart.setBody(QByteArray(reinterpret_cast<const char*>(req.binaryData.data()), 
                                        req.binaryData.size()));
             
