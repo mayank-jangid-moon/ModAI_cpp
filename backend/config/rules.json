@@ -1,0 +1,45 @@
+{
+  "rules": [
+    {
+      "id": "high_ai_score",
+      "name": "High AI Score Block",
+      "condition": "ai_score > 0.8",
+      "action": "block",
+      "subreddit": "",
+      "enabled": true
+    },
+    {
+      "id": "nsfw_content",
+      "name": "NSFW Content Block",
+      "condition": "sexual > 0.9",
+      "action": "block",
+      "subreddit": "",
+      "enabled": true
+    },
+    {
+      "id": "violence_content",
+      "name": "Violence Content Block",
+      "condition": "violence > 0.9",
+      "action": "block",
+      "subreddit": "",
+      "enabled": true
+    },
+    {
+      "id": "hate_speech",
+      "name": "Hate Speech Review",
+      "condition": "hate > 0.7",
+      "action": "review",
+      "subreddit": "",
+      "enabled": true
+    },
+    {
+      "id": "moderate_ai_score",
+      "name": "Moderate AI Score Review",
+      "condition": "ai_score > 0.6",
+      "action": "review",
+      "subreddit": "",
+      "enabled": true
+    }
+  ]
+}
+
