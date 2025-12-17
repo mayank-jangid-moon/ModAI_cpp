@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QTabWidget>
 #include <QTableView>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -16,6 +17,9 @@
 #include "ui/DashboardModel.h"
 #include "ui/DetailPanel.h"
 #include "ui/RailguardOverlay.h"
+#include "ui/ChatbotPanel.h"
+#include "ui/AITextDetectorPanel.h"
+#include "ui/AIImageDetectorPanel.h"
 #include "storage/Storage.h"
 #include <QSortFilterProxyModel>
 #include <QComboBox>
@@ -31,17 +35,27 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 private:
+    // Tab widget for different modes
+    QTabWidget* tabWidget_;
+    
+    // Reddit Scraper Mode (existing functionality)
+    QWidget* redditScraperTab_;
     QTableView* tableView_;
     DashboardModel* model_;
     DashboardProxyModel* proxyModel_;
     DetailPanel* detailPanel_;
-    RailguardOverlay* railguardOverlay_;
-    
     QPushButton* startButton_;
     QPushButton* stopButton_;
     QLineEdit* subredditInput_;
     QLineEdit* searchInput_;
     QComboBox* filterCombo_;
+    
+    // New mode panels
+    ChatbotPanel* chatbotPanel_;
+    AITextDetectorPanel* aiTextDetectorPanel_;
+    AIImageDetectorPanel* aiImageDetectorPanel_;
+    
+    RailguardOverlay* railguardOverlay_;
     QLabel* statusLabel_;
     
     std::unique_ptr<ModerationEngine> moderationEngine_;
@@ -55,7 +69,15 @@ private:
     QMutex queueMutex_;
     bool processingActive_;
     
+    // Theme support
+    bool isDarkTheme_{false};
+    QPushButton* themeToggleButton_;
+    void applyTheme();
+    
     void setupUI();
+    void setupRedditScraperTab();
+    void setupChatbotTab();
+    void setupAIDetectorTabs();
     void setupConnections();
     void loadExistingData();
     void cleanupOnExit();

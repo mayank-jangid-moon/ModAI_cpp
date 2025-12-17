@@ -27,14 +27,14 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
     
     rateLimiter_->waitIfNeeded();
     
-    // Hive visual moderation (v2 task sync)
-    std::string url = "https://api.thehive.ai/api/v2/task/sync";
+    // Hive Visual Moderation API v3
+    std::string url = "https://api.thehive.ai/api/v3/hive/visual-moderation";
     
     HttpRequest req;
     req.url = url;
     req.method = "POST";
-    // Hive expects "Token <key>"
-    req.headers["Authorization"] = "Token " + apiKey_;
+    // V3 API uses Bearer token authorization
+    req.headers["Authorization"] = "Bearer " + apiKey_;
     req.contentType = "multipart/form-data";
     req.binaryData = imageBytes;
     
@@ -42,61 +42,41 @@ VisualModerationResult HiveImageModerator::analyzeImage(const std::vector<uint8_
         HttpResponse response = httpClient_->post(req);
         
         if (!response.success) {
-            Logger::error("Hive API error: " + response.errorMessage);
+            Logger::error("Hive Visual Moderation API error: " + response.errorMessage);
             return result;
         }
         
         if (response.statusCode != 200) {
-            Logger::error("Hive API returned status: " + std::to_string(response.statusCode));
+            Logger::error("Hive Visual Moderation API returned status: " + std::to_string(response.statusCode) + 
+                         ", Body: " + response.body);
             return result;
         }
         
         auto json = nlohmann::json::parse(response.body);
         
-        // v3 format: { "output": [ { "classes": [ { "class_name": "...", "value": 0.9 }, ... ] } ] }
-        if (json.contains("output") && json["output"].is_array()) {
-            for (const auto& item : json["output"]) {
-                if (item.contains("classes") && item["classes"].is_array()) {
-                    for (const auto& cls : item["classes"]) {
-                        if (cls.contains("class_name") && cls.contains("value")) {
-                            std::string label = cls["class_name"].get<std::string>();
-                            double score = cls["value"].get<double>();
-                            result.labels[label] = score;
-                        }
+        // Parse V3 Visual Moderation API response format
+        // Expected: { "task_id": "...", "model": "hive/visual-moderation", "version": "1",
+        //            "output": [ { "classes": [ { "class_name": "general_nsfw", "value": 0.99 }, ... ] } ] }
+        if (json.contains("output") && json["output"].is_array() && !json["output"].empty()) {
+            const auto& firstOutput = json["output"][0];
+            
+            if (firstOutput.contains("classes") && firstOutput["classes"].is_array()) {
+                for (const auto& cls : firstOutput["classes"]) {
+                    if (cls.contains("class_name") && cls.contains("value")) {
+                        std::string className = cls["class_name"].get<std::string>();
+                        double value = cls["value"].get<double>();
+                        result.labels[className] = value;
                     }
                 }
+                
+                Logger::debug("Hive Visual Moderation: Found " + std::to_string(result.labels.size()) + " classifications");
             }
-        }
-
-        // Legacy formats
-        if (json.contains("status") && json["status"] == "completed") {
-            if (json.contains("result") && json["result"].contains("output")) {
-                auto output = json["result"]["output"];
-                if (output.is_array()) {
-                    for (const auto& item : output) {
-                        if (item.contains("classes")) {
-                            for (const auto& cls : item["classes"]) {
-                                if (cls.contains("class") && cls.contains("score")) {
-                                    std::string label = cls["class"].get<std::string>();
-                                    double score = cls["score"].get<double>();
-                                    result.labels[label] = score;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (json.contains("predictions") && json["predictions"].is_array()) {
-            for (const auto& pred : json["predictions"]) {
-                if (pred.contains("label") && pred.contains("confidence")) {
-                    std::string label = pred["label"].get<std::string>();
-                    double confidence = pred["confidence"].get<double>();
-                    result.labels[label] = confidence;
-                }
-            }
+        } else {
+            Logger::warn("Hive Visual Moderation: Unexpected response format - no output array found");
         }
         
+    } catch (const nlohmann::json::parse_error& e) {
+        Logger::error("JSON parse error in HiveImageModerator: " + std::string(e.what()));
     } catch (const std::exception& e) {
         Logger::error("Exception in HiveImageModerator: " + std::string(e.what()));
     }

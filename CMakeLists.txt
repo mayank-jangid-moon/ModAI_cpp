@@ -72,6 +72,9 @@ set(HEADERS
     include/ui/DetailPanel.h
     include/ui/RailguardOverlay.h
     include/ui/ReviewDialog.h
+    include/ui/ChatbotPanel.h
+    include/ui/AITextDetectorPanel.h
+    include/ui/AIImageDetectorPanel.h
 )
 
 set(SOURCES
@@ -96,6 +99,9 @@ set(SOURCES
     src/ui/DetailPanel.cpp
     src/ui/RailguardOverlay.cpp
     src/ui/ReviewDialog.cpp
+    src/ui/ChatbotPanel.cpp
+    src/ui/AITextDetectorPanel.cpp
+    src/ui/AIImageDetectorPanel.cpp
 )
 
 # Enable Qt MOC BEFORE creating the executable

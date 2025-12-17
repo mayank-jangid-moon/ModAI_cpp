@@ -10,6 +10,9 @@
 #include "storage/Storage.h"
 #include "utils/Logger.h"
 #include "utils/Crypto.h"
+#include "ui/ChatbotPanel.h"
+#include "ui/AITextDetectorPanel.h"
+#include "ui/AIImageDetectorPanel.h"
 #include <QApplication>
 #include <QHeaderView>
 #include <QMessageBox>
@@ -21,6 +24,7 @@
 #include <QDateTime>
 #include <QUuid>
 #include <QMenuBar>
+#include <QTabWidget>
 
 namespace ModAI {
 
@@ -151,6 +155,27 @@ MainWindow::MainWindow(QWidget* parent)
                                   Q_ARG(ContentItem, item));
     });
     
+    // Initialize new mode panels with shared components
+    
+    // Chatbot panel - needs HTTP client and text moderator
+    chatbotPanel_->initialize(
+        std::make_unique<QtHttpClient>(this),
+        std::make_unique<HiveTextModerator>(
+            std::make_unique<QtHttpClient>(this), hiveKey),
+        "", // LLM API key (optional - can use Ollama locally)
+        "http://localhost:11434/api/chat" // Default Ollama endpoint
+    );
+    
+    // AI Text Detector - needs text detector (share a reference)
+    // Create another instance for the detector panel
+    auto textDetectorForPanel = std::make_unique<LocalAIDetector>(modelPath, tokenizerPath, 768, 0.5f);
+    aiTextDetectorPanel_->initialize(std::move(textDetectorForPanel));
+    
+    // AI Image Detector - needs image moderator
+    auto imageModeratorForPanel = std::make_unique<HiveImageModerator>(
+        std::make_unique<QtHttpClient>(this), hiveKey);
+    aiImageDetectorPanel_->initialize(std::move(imageModeratorForPanel));
+    
     // Do not auto-load old records on startup; user can load via menu.
 }
 
@@ -163,12 +188,62 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupUI() {
-    setWindowTitle("Trust & Safety Dashboard");
-    setMinimumSize(1200, 800);
+    setWindowTitle("ModAI - Multi-Mode Content Analysis");
+    setMinimumSize(1400, 900);
     
-    // Central widget with splitter
-    QSplitter* mainSplitter = new QSplitter(Qt::Horizontal, this);
-    setCentralWidget(mainSplitter);
+    // Create tab widget as central widget
+    tabWidget_ = new QTabWidget(this);
+    tabWidget_->setTabPosition(QTabWidget::North);
+    setCentralWidget(tabWidget_);
+    
+    // Setup all mode tabs
+    setupRedditScraperTab();
+    setupChatbotTab();
+    setupAIDetectorTabs();
+    
+    // Status bar
+    statusLabel_ = new QLabel("Ready");
+    statusBar()->addWidget(statusLabel_);
+    
+    // Theme toggle button in top right corner
+    themeToggleButton_ = new QPushButton("🌙 Dark");
+    themeToggleButton_->setFixedSize(100, 32);
+    themeToggleButton_->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #f0f0f0; "
+        "  border: 1px solid #ccc; "
+        "  border-radius: 16px; "
+        "  font-weight: bold; "
+        "  padding: 5px 15px; "
+        "}"
+        "QPushButton:hover { background-color: #e0e0e0; }"
+    );
+    statusBar()->addPermanentWidget(themeToggleButton_);
+    connect(themeToggleButton_, &QPushButton::clicked, this, [this]() {
+        isDarkTheme_ = !isDarkTheme_;
+        applyTheme();
+    });
+    
+    // Menu: History -> Load Previous
+    QMenu* historyMenu = menuBar()->addMenu("History");
+    QAction* loadHistory = new QAction("Load Previous Reddit Session", this);
+    historyMenu->addAction(loadHistory);
+    connect(loadHistory, &QAction::triggered, this, &MainWindow::onLoadHistory);
+
+    // Railguard overlay
+    railguardOverlay_ = new RailguardOverlay(this);
+    railguardOverlay_->hide();
+    
+    // Apply initial theme (light)
+    applyTheme();
+}
+
+void MainWindow::setupRedditScraperTab() {
+    redditScraperTab_ = new QWidget;
+    QVBoxLayout* mainLayout = new QVBoxLayout(redditScraperTab_);
+    
+    // Create horizontal splitter
+    QSplitter* splitter = new QSplitter(Qt::Horizontal);
     
     // Left: Table view
     QWidget* leftWidget = new QWidget;
@@ -223,29 +298,34 @@ void MainWindow::setupUI() {
     tableView_->setAlternatingRowColors(true);
     
     leftLayout->addWidget(tableView_);
-    
-    mainSplitter->addWidget(leftWidget);
+    splitter->addWidget(leftWidget);
     
     // Right: Detail panel
     detailPanel_ = new DetailPanel(this);
-    mainSplitter->addWidget(detailPanel_);
+    splitter->addWidget(detailPanel_);
     
-    mainSplitter->setStretchFactor(0, 2);
-    mainSplitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(0, 2);
+    splitter->setStretchFactor(1, 1);
     
-    // Status bar
-    statusLabel_ = new QLabel("Ready");
-    statusBar()->addWidget(statusLabel_);
+    mainLayout->addWidget(splitter);
     
-    // Menu: History -> Load Previous
-    QMenu* historyMenu = menuBar()->addMenu("History");
-    QAction* loadHistory = new QAction("Load Previous Session", this);
-    historyMenu->addAction(loadHistory);
-    connect(loadHistory, &QAction::triggered, this, &MainWindow::onLoadHistory);
+    // Add tab
+    tabWidget_->addTab(redditScraperTab_, "📱 Reddit Scraper & Moderator");
+}
 
-    // Railguard overlay
-    railguardOverlay_ = new RailguardOverlay(this);
-    railguardOverlay_->hide();
+void MainWindow::setupChatbotTab() {
+    chatbotPanel_ = new ChatbotPanel(this);
+    tabWidget_->addTab(chatbotPanel_, "💬 AI Chatbot (Railguard)");
+}
+
+void MainWindow::setupAIDetectorTabs() {
+    // AI Text Detector
+    aiTextDetectorPanel_ = new AITextDetectorPanel(this);
+    tabWidget_->addTab(aiTextDetectorPanel_, "📝 AI Text Detector");
+    
+    // AI Image Detector  
+    aiImageDetectorPanel_ = new AIImageDetectorPanel(this);
+    tabWidget_->addTab(aiImageDetectorPanel_, "🖼️ AI Image Detector");
 }
 
 void MainWindow::setupConnections() {
@@ -478,6 +558,169 @@ void MainWindow::cleanupOnExit() {
     QString cacheFile = QString::fromStdString(dataPath_ + "/cache/results.jsonl");
     if (QFile::exists(cacheFile)) {
         QFile::remove(cacheFile);
+    }
+}
+
+void MainWindow::applyTheme() {
+    QString bgColor, fgColor, borderColor, tabBg, tabSelectedBg, buttonBg, buttonHover;
+    
+    if (isDarkTheme_) {
+        // Dark theme colors
+        bgColor = "#1e1e1e";
+        fgColor = "#e0e0e0";
+        borderColor = "#333";
+        tabBg = "#2d2d2d";
+        tabSelectedBg = "#0066cc";
+        buttonBg = "#2d2d2d";
+        buttonHover = "#3d3d3d";
+        
+        themeToggleButton_->setText("☀️ Light");
+        themeToggleButton_->setStyleSheet(
+            "QPushButton { "
+            "  background-color: #2d2d2d; "
+            "  color: #e0e0e0; "
+            "  border: 1px solid #444; "
+            "  border-radius: 16px; "
+            "  font-weight: bold; "
+            "  padding: 5px 15px; "
+            "}"
+            "QPushButton:hover { background-color: #3d3d3d; }"
+        );
+    } else {
+        // Light theme colors
+        bgColor = "#ffffff";
+        fgColor = "#333333";
+        borderColor = "#ddd";
+        tabBg = "#f0f0f0";
+        tabSelectedBg = "#0066cc";
+        buttonBg = "#f0f0f0";
+        buttonHover = "#e0e0e0";
+        
+        themeToggleButton_->setText("🌙 Dark");
+        themeToggleButton_->setStyleSheet(
+            "QPushButton { "
+            "  background-color: #f0f0f0; "
+            "  color: #333; "
+            "  border: 1px solid #ccc; "
+            "  border-radius: 16px; "
+            "  font-weight: bold; "
+            "  padding: 5px 15px; "
+            "}"
+            "QPushButton:hover { background-color: #e0e0e0; }"
+        );
+    }
+    
+    // Apply to main window
+    QString mainStyle = QString(
+        "QMainWindow, QWidget { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "}"
+        "QTabWidget::pane { "
+        "  border: 1px solid %3; "
+        "  background-color: %1; "
+        "}"
+        "QTabBar::tab { "
+        "  background-color: %4; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  padding: 8px 20px; "
+        "  margin-right: 2px; "
+        "  border-top-left-radius: 4px; "
+        "  border-top-right-radius: 4px; "
+        "}"
+        "QTabBar::tab:selected { "
+        "  background-color: %5; "
+        "  color: white; "
+        "}"
+        "QTableView { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  gridline-color: %3; "
+        "}"
+        "QTableView::item:selected { "
+        "  background-color: %5; "
+        "  color: white; "
+        "}"
+        "QHeaderView::section { "
+        "  background-color: %4; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  padding: 4px; "
+        "}"
+        "QLineEdit, QTextEdit { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  border-radius: 4px; "
+        "  padding: 5px; "
+        "}"
+        "QPushButton { "
+        "  background-color: %6; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  border-radius: 4px; "
+        "  padding: 6px 12px; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: %7; "
+        "}"
+        "QLabel { color: %2; }"
+        "QComboBox { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "  border-radius: 4px; "
+        "  padding: 5px; "
+        "}"
+        "QComboBox QAbstractItemView { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "  selection-background-color: %5; "
+        "}"
+        "QProgressBar { "
+        "  border: 1px solid %3; "
+        "  border-radius: 4px; "
+        "  text-align: center; "
+        "  background-color: %4; "
+        "  color: %2; "
+        "}"
+        "QProgressBar::chunk { "
+        "  background-color: %5; "
+        "}"
+        "QMenuBar { "
+        "  background-color: %4; "
+        "  color: %2; "
+        "}"
+        "QMenuBar::item:selected { "
+        "  background-color: %5; "
+        "}"
+        "QMenu { "
+        "  background-color: %1; "
+        "  color: %2; "
+        "  border: 1px solid %3; "
+        "}"
+        "QMenu::item:selected { "
+        "  background-color: %5; "
+        "}"
+        "QStatusBar { "
+        "  background-color: %4; "
+        "  color: %2; "
+        "}"
+    ).arg(bgColor, fgColor, borderColor, tabBg, tabSelectedBg, buttonBg, buttonHover);
+    
+    setStyleSheet(mainStyle);
+    
+    // Apply theme to all panels
+    if (chatbotPanel_) {
+        chatbotPanel_->setTheme(isDarkTheme_);
+    }
+    if (aiTextDetectorPanel_) {
+        aiTextDetectorPanel_->setTheme(isDarkTheme_);
+    }
+    if (aiImageDetectorPanel_) {
+        aiImageDetectorPanel_->setTheme(isDarkTheme_);
     }
 }
 

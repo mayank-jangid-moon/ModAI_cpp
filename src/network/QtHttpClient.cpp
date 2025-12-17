@@ -17,7 +17,7 @@ QtHttpClient::QtHttpClient(QObject* parent)
     : QObject(parent)
     , networkManager_(std::make_unique<QNetworkAccessManager>(this))
     , creationThread_(QThread::currentThread())
-    , timeoutMs_(30000) {
+    , timeoutMs_(60000) {  // Increased to 60 seconds for slower APIs
 }
 
 QNetworkAccessManager* QtHttpClient::getNetworkManager() {
