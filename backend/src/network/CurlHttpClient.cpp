@@ -63,6 +63,10 @@ HttpResponse CurlHttpClient::executeRequest(CURL* curl, const HttpRequest& req, 
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeoutMs_);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     
+    // Follow redirects (needed for Reddit and other sites)
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    
     CURLcode res = curl_easy_perform(curl);
     
     if (res == CURLE_OK) {

@@ -480,126 +480,151 @@ void ApiServer::start() {
     
     // ===== REDDIT SCRAPER ENDPOINTS =====
     
-    if (redditScraper_) {
-        // Get scraper status
-        svr.Get("/api/reddit/status", [this](const httplib::Request&, httplib::Response& res) {
+    // Get scraper status
+    svr.Get("/api/reddit/status", [this](const httplib::Request&, httplib::Response& res) {
+        if (!redditScraper_) {
             json response = {
-                {"is_running", redditScraper_->isScraping()},
-                {"subreddits", redditScraper_->getSubreddits()}
+                {"is_running", false},
+                {"subreddits", json::array()},
+                {"error", "Reddit scraper not enabled. Start the backend with --enable-reddit flag"}
             };
             res.set_content(response.dump(), "application/json");
-        });
-        
-        // Start scraping
-        svr.Post("/api/reddit/start", [this](const httplib::Request& req, httplib::Response& res) {
-            try {
-                auto body = json::parse(req.body);
-                
-                if (!body.contains("subreddits")) {
-                    json error = {{"error", "Missing required field: subreddits"}};
-                    res.status = 400;
-                    res.set_content(error.dump(), "application/json");
-                    return;
-                }
-                
-                std::vector<std::string> subreddits = body["subreddits"].get<std::vector<std::string>>();
-                int interval = body.value("interval", 300); // Default 5 minutes
-                
-                redditScraper_->setSubreddits(subreddits);
-                
-                // Set callback to process scraped items
-                redditScraper_->setOnItemScraped([this](const ContentItem& item) {
-                    ContentItem processedItem = item;
-                    moderationEngine_->processItem(processedItem);
-                    storage_->saveContent(processedItem);
-                });
-                
-                redditScraper_->start(interval);
-                
-                json response = {
-                    {"success", true},
-                    {"message", "Reddit scraper started"},
-                    {"subreddits", subreddits},
-                    {"interval_seconds", interval}
-                };
-                res.set_content(response.dump(), "application/json");
-            } catch (const std::exception& e) {
-                Logger::error("Error starting Reddit scraper: " + std::string(e.what()));
-                json error = {{"error", e.what()}};
-                res.status = 500;
+            return;
+        }
+        json response = {
+            {"is_running", redditScraper_->isScraping()},
+            {"subreddits", redditScraper_->getSubreddits()}
+        };
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Start scraping
+    svr.Post("/api/reddit/start", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!redditScraper_) {
+            json error = {{"error", "Reddit scraper not enabled. Start backend with --enable-reddit flag"}};
+            res.status = 503;
+            res.set_content(error.dump(), "application/json");
+            return;
+        }
+        try {
+            auto body = json::parse(req.body);
+            
+            if (!body.contains("subreddits")) {
+                json error = {{"error", "Missing required field: subreddits"}};
+                res.status = 400;
                 res.set_content(error.dump(), "application/json");
+                return;
             }
-        });
-        
-        // Stop scraping
-        svr.Post("/api/reddit/stop", [this](const httplib::Request&, httplib::Response& res) {
-            redditScraper_->stop();
-            json response = {{"success", true}, {"message", "Reddit scraper stopped"}};
+            
+            std::vector<std::string> subreddits = body["subreddits"].get<std::vector<std::string>>();
+            int interval = body.value("interval", 300); // Default 5 minutes
+            
+            redditScraper_->setSubreddits(subreddits);
+            
+            // Set callback to process scraped items
+            redditScraper_->setOnItemScraped([this](const ContentItem& item) {
+                ContentItem processedItem = item;
+                moderationEngine_->processItem(processedItem);
+                storage_->saveContent(processedItem);
+            });
+            
+            redditScraper_->start(interval);
+            
+            json response = {
+                {"success", true},
+                {"message", "Reddit scraper started"},
+                {"subreddits", subreddits},
+                {"interval_seconds", interval}
+            };
             res.set_content(response.dump(), "application/json");
-        });
-        
-        // Scrape once (manual trigger)
-        svr.Post("/api/reddit/scrape", [this](const httplib::Request& req, httplib::Response& res) {
-            try {
-                auto body = json::parse(req.body);
-                
-                if (body.contains("subreddits")) {
-                    std::vector<std::string> subreddits = body["subreddits"].get<std::vector<std::string>>();
-                    redditScraper_->setSubreddits(subreddits);
-                }
-                
-                auto items = redditScraper_->scrapeOnce();
-                
-                // Process all items
-                for (auto& item : items) {
-                    moderationEngine_->processItem(item);
-                    storage_->saveContent(item);
-                }
-                
-                json response = {
-                    {"success", true},
-                    {"items_scraped", items.size()},
-                    {"items", json::array()}
-                };
-                
-                for (const auto& item : items) {
-                    response["items"].push_back(json::parse(item.toJson()));
-                }
-                
-                res.set_content(response.dump(), "application/json");
-            } catch (const std::exception& e) {
-                Logger::error("Error scraping Reddit: " + std::string(e.what()));
-                json error = {{"error", e.what()}};
-                res.status = 500;
-                res.set_content(error.dump(), "application/json");
+        } catch (const std::exception& e) {
+            Logger::error("Error starting Reddit scraper: " + std::string(e.what()));
+            json error = {{"error", e.what()}};
+            res.status = 500;
+            res.set_content(error.dump(), "application/json");
+        }
+    });
+    
+    // Stop scraping
+    svr.Post("/api/reddit/stop", [this](const httplib::Request&, httplib::Response& res) {
+        if (!redditScraper_) {
+            json error = {{"error", "Reddit scraper not enabled"}};
+            res.status = 503;
+            res.set_content(error.dump(), "application/json");
+            return;
+        }
+        redditScraper_->stop();
+        json response = {{"success", true}, {"message", "Reddit scraper stopped"}};
+        res.set_content(response.dump(), "application/json");
+    });
+    
+    // Scrape once (manual trigger)
+    svr.Post("/api/reddit/scrape", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!redditScraper_) {
+            json error = {{"error", "Reddit scraper not enabled. Start backend with --enable-reddit flag"}};
+            res.status = 503;
+            res.set_content(error.dump(), "application/json");
+            return;
+        }
+        try {
+            auto body = json::parse(req.body);
+            
+            if (body.contains("subreddits")) {
+                std::vector<std::string> subreddits = body["subreddits"].get<std::vector<std::string>>();
+                redditScraper_->setSubreddits(subreddits);
             }
-        });
-        
-        // Get scraped items
-        svr.Get("/api/reddit/items", [this](const httplib::Request& req, httplib::Response& res) {
-            try {
-                std::string subreddit = req.get_param_value("subreddit");
-                
-                auto items = storage_->loadAllContent();
-                json response = json::array();
-                
-                for (const auto& item : items) {
-                    if (item.source == "reddit") {
-                        if (subreddit.empty() || item.subreddit == subreddit) {
-                            response.push_back(json::parse(item.toJson()));
-                        }
+            
+            auto items = redditScraper_->scrapeOnce();
+            
+            // Process all items
+            for (auto& item : items) {
+                moderationEngine_->processItem(item);
+                storage_->saveContent(item);
+            }
+            
+            json response = {
+                {"success", true},
+                {"items_scraped", items.size()},
+                {"items", json::array()}
+            };
+            
+            for (const auto& item : items) {
+                response["items"].push_back(json::parse(item.toJson()));
+            }
+            
+            res.set_content(response.dump(), "application/json");
+        } catch (const std::exception& e) {
+            Logger::error("Error scraping Reddit: " + std::string(e.what()));
+            json error = {{"error", e.what()}};
+            res.status = 500;
+            res.set_content(error.dump(), "application/json");
+        }
+    });
+    
+    // Get scraped items
+    svr.Get("/api/reddit/items", [this](const httplib::Request& req, httplib::Response& res) {
+        try {
+            std::string subreddit = req.get_param_value("subreddit");
+            
+            auto items = storage_->loadAllContent();
+            json response = json::array();
+            
+            for (const auto& item : items) {
+                if (item.source == "reddit") {
+                    if (subreddit.empty() || item.subreddit == subreddit) {
+                        response.push_back(json::parse(item.toJson()));
                     }
                 }
-                
-                res.set_content(response.dump(), "application/json");
-            } catch (const std::exception& e) {
-                Logger::error("Error getting Reddit items: " + std::string(e.what()));
-                json error = {{"error", e.what()}};
-                res.status = 500;
-                res.set_content(error.dump(), "application/json");
             }
-        });
-    }
+            
+            res.set_content(response.dump(), "application/json");
+        } catch (const std::exception& e) {
+            Logger::error("Error getting Reddit items: " + std::string(e.what()));
+            json error = {{"error", e.what()}};
+            res.status = 500;
+            res.set_content(error.dump(), "application/json");
+        }
+    });
     
     // ===== STATISTICS ENDPOINTS =====
     

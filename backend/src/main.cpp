@@ -80,18 +80,6 @@ int main(int argc, char* argv[]) {
         Logger::warn("Set via environment variable: export MODAI_HIVE_API_KEY=your_key");
     }
     
-    std::string redditClientId;
-    std::string redditClientSecret;
-    if (enableReddit) {
-        redditClientId = Crypto::getApiKey("REDDIT_CLIENT_ID");
-        redditClientSecret = Crypto::getApiKey("REDDIT_CLIENT_SECRET");
-        if (redditClientId.empty() || redditClientSecret.empty()) {
-            Logger::warn("Reddit credentials not set - Reddit scraper will be disabled");
-            Logger::warn("Set via: export MODAI_REDDIT_CLIENT_ID and MODAI_REDDIT_CLIENT_SECRET");
-            enableReddit = false;
-        }
-    }
-    
     // Initialize components
     try {
         // HTTP Client
@@ -178,19 +166,19 @@ int main(int argc, char* argv[]) {
         // Wrap storage pointer for API server
         auto storageShared = std::shared_ptr<Storage>(storagePtr, [](Storage*){});
         
-        // Reddit Scraper (optional)
+        // Reddit Scraper (optional, no authentication needed for public JSON API)
         std::shared_ptr<RedditScraper> redditScraper = nullptr;
         if (enableReddit) {
             Logger::info("Initializing Reddit scraper");
             auto redditHttpClient = std::make_unique<CurlHttpClient>();
             redditScraper = std::make_shared<RedditScraper>(
                 std::move(redditHttpClient),
-                redditClientId,
-                redditClientSecret,
-                "ModAI:v1.0.0 (by /u/moderator)",
+                "",  // No client ID needed for public API
+                "",  // No client secret needed for public API
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 dataPath
             );
-            Logger::info("Reddit scraper initialized");
+            Logger::info("Reddit scraper initialized (using public JSON API)");
         }
         
         Logger::info("All components initialized successfully");

@@ -91,21 +91,28 @@ std::vector<ContentItem> RedditScraper::fetchPosts(const std::string& subreddit,
         return items;
     }
     
-    authenticate();
-    
-    if (accessToken_.empty()) {
-        Logger::warn("No Reddit access token available");
-        return items;
+    // Use public Reddit JSON API (no authentication needed)
+    // For "top" we need to add time filter parameter
+    std::string url = "https://www.reddit.com/r/" + subreddit + "/" + timeFilter + ".json?limit=" + std::to_string(limit);
+    if (timeFilter == "top") {
+        url = "https://www.reddit.com/r/" + subreddit + "/top.json?t=day&limit=" + std::to_string(limit);
     }
     
-    std::string url = "https://oauth.reddit.com/r/" + subreddit + "/top?t=" + timeFilter + "&limit=" + std::to_string(limit);
     std::map<std::string, std::string> headers = {
-        {"User-Agent", userAgent_},
-        {"Authorization", "Bearer " + accessToken_}
+        {"User-Agent", userAgent_}
     };
+    
+    Logger::debug("Fetching Reddit URL: " + url);
+    Logger::debug("User-Agent: " + userAgent_);
     
     try {
         HttpResponse response = httpClient_->get(url, headers);
+        
+        Logger::debug("Reddit API response code: " + std::to_string(response.statusCode));
+        Logger::debug("Response body length: " + std::to_string(response.body.length()));
+        if (!response.success) {
+            Logger::error("Reddit request failed: " + response.errorMessage);
+        }
         
         if (response.statusCode == 200) {
             nlohmann::json responseJson = nlohmann::json::parse(response.body);

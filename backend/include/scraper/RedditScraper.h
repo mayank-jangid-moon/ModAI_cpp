@@ -36,7 +36,7 @@ private:
     std::vector<ContentItem> lastScrapedItems_;
 
     void authenticate();
-    std::vector<ContentItem> fetchPosts(const std::string& subreddit, const std::string& timeFilter = "day", int limit = 25);
+    std::vector<ContentItem> fetchPosts(const std::string& subreddit, const std::string& timeFilter = "hot", int limit = 25);
     std::vector<ContentItem> fetchComments(const std::string& subreddit);
     ContentItem parsePost(const nlohmann::json& postJson);
     ContentItem parseComment(const nlohmann::json& commentJson);
