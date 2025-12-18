@@ -53,4 +53,9 @@ bool DashboardProxyModel::filterAcceptsRow(int source_row, const QModelIndex& so
     return true;
 }
 
+QVariant DashboardProxyModel::data(const QModelIndex& index, int role) const {
+    // Explicitly forward all roles including BackgroundRole to source model
+    return QSortFilterProxyModel::data(index, role);
+}
+
 } // namespace ModAI

@@ -13,6 +13,7 @@
 #include "ui/ChatbotPanel.h"
 #include "ui/AITextDetectorPanel.h"
 #include "ui/AIImageDetectorPanel.h"
+#include "ui/DashboardItemDelegate.h"
 #include <QApplication>
 #include <QHeaderView>
 #include <QMessageBox>
@@ -25,6 +26,11 @@
 #include <QUuid>
 #include <QMenuBar>
 #include <QTabWidget>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QTextStream>
 
 namespace ModAI {
 
@@ -179,6 +185,10 @@ MainWindow::MainWindow(QWidget* parent)
     // Also set image moderator for chatbot (for generated image moderation)
     chatbotPanel_->setImageModerator(imageModeratorForPanel);
     
+    // Set image moderator for Reddit scraper (for Reddit image moderation)
+    scraper_->setImageModerator(std::make_unique<HiveImageModerator>(
+        std::make_unique<QtHttpClient>(this), hiveKey));
+    
     // Do not auto-load old records on startup; user can load via menu.
 }
 
@@ -244,6 +254,8 @@ void MainWindow::setupUI() {
 void MainWindow::setupRedditScraperTab() {
     redditScraperTab_ = new QWidget;
     QVBoxLayout* mainLayout = new QVBoxLayout(redditScraperTab_);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setSpacing(16);
     
     // Create horizontal splitter
     QSplitter* splitter = new QSplitter(Qt::Horizontal);
@@ -251,43 +263,299 @@ void MainWindow::setupRedditScraperTab() {
     // Left: Table view
     QWidget* leftWidget = new QWidget;
     QVBoxLayout* leftLayout = new QVBoxLayout(leftWidget);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(16);
     
-    // Toolbar
-    QHBoxLayout* toolbarLayout = new QHBoxLayout;
-    startButton_ = new QPushButton("Start Scraping");
-    stopButton_ = new QPushButton("Stop Scraping");
-    stopButton_->setEnabled(false);
+    // Control Card - Contains scraper controls
+    QFrame* controlCard = new QFrame;
+    controlCard->setObjectName("controlCard");
+    controlCard->setStyleSheet(
+        "QFrame#controlCard { "
+        "  background-color: white; "
+        "  border-radius: 12px; "
+        "  border: 1px solid #e0e0e0; "
+        "  padding: 20px; "
+        "}"
+    );
+    QVBoxLayout* controlLayout = new QVBoxLayout(controlCard);
+    controlLayout->setSpacing(12);
+    
+    // Title
+    QLabel* controlTitle = new QLabel("Reddit Content Scraper");
+    controlTitle->setStyleSheet(
+        "QLabel { "
+        "  font-size: 18px; "
+        "  font-weight: bold; "
+        "  color: #1a1a1a; "
+        "  margin-bottom: 8px; "
+        "}"
+    );
+    controlLayout->addWidget(controlTitle);
+    
+    // Subreddit Input Row
+    QHBoxLayout* subredditLayout = new QHBoxLayout;
+    subredditLayout->setSpacing(12);
+    
+    QLabel* subredditLabel = new QLabel("Subreddit:");
+    subredditLabel->setStyleSheet(
+        "QLabel { "
+        "  font-size: 14px; "
+        "  font-weight: 600; "
+        "  color: #555; "
+        "  min-width: 80px; "
+        "}"
+    );
+    
     subredditInput_ = new QLineEdit;
-    subredditInput_->setPlaceholderText("Enter subreddit (e.g., technology)");
+    subredditInput_->setPlaceholderText("e.g., technology, programming");
+    subredditInput_->setStyleSheet(
+        "QLineEdit { "
+        "  padding: 10px 14px; "
+        "  border: 2px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  font-size: 14px; "
+        "  background-color: #fafafa; "
+        "}"
+        "QLineEdit:focus { "
+        "  border-color: #4a90e2; "
+        "  background-color: white; "
+        "}"
+    );
+    subredditInput_->setMinimumHeight(40);
     
-    toolbarLayout->addWidget(new QLabel("Subreddit:"));
-    toolbarLayout->addWidget(subredditInput_);
-    toolbarLayout->addWidget(startButton_);
-    toolbarLayout->addWidget(stopButton_);
-    toolbarLayout->addStretch();
+    subredditLayout->addWidget(subredditLabel);
+    subredditLayout->addWidget(subredditInput_, 1);
+    controlLayout->addLayout(subredditLayout);
     
-    leftLayout->addLayout(toolbarLayout);
+    // Action Row
+    QHBoxLayout* actionLayout = new QHBoxLayout;
+    actionLayout->setSpacing(12);
     
-    // Search and Filter toolbar
-    QHBoxLayout* filterLayout = new QHBoxLayout;
+    toggleScrapingButton_ = new QPushButton("▶ Start Scraping");
+    toggleScrapingButton_->setStyleSheet(
+        "QPushButton { "
+        "  padding: 10px 24px; "
+        "  background-color: #4a90e2; "
+        "  color: white; "
+        "  border: none; "
+        "  border-radius: 8px; "
+        "  font-size: 14px; "
+        "  font-weight: 600; "
+        "  min-width: 150px; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #357abd; "
+        "}"
+        "QPushButton:pressed { "
+        "  background-color: #2868a8; "
+        "}"
+    );
+    toggleScrapingButton_->setMinimumHeight(40);
+    toggleScrapingButton_->setCursor(Qt::PointingHandCursor);
+    
+    scrapingStatusLabel_ = new QLabel("");
+    scrapingStatusLabel_->setStyleSheet(
+        "QLabel { "
+        "  color: #666; "
+        "  font-style: italic; "
+        "  font-size: 13px; "
+        "}"
+    );
+    
+    actionLayout->addWidget(toggleScrapingButton_);
+    actionLayout->addWidget(scrapingStatusLabel_);
+    actionLayout->addStretch();
+    controlLayout->addLayout(actionLayout);
+    
+    leftLayout->addWidget(controlCard);
+    
+    // Search and Filter Card
+    QFrame* filterCard = new QFrame;
+    filterCard->setObjectName("filterCard");
+    filterCard->setStyleSheet(
+        "QFrame#filterCard { "
+        "  background-color: white; "
+        "  border-radius: 12px; "
+        "  border: 1px solid #e0e0e0; "
+        "  padding: 16px; "
+        "}"
+    );
+    QHBoxLayout* filterLayout = new QHBoxLayout(filterCard);
+    filterLayout->setSpacing(12);
+    
     searchInput_ = new QLineEdit;
-    searchInput_->setPlaceholderText("Search...");
+    searchInput_->setPlaceholderText("🔍 Search posts...");
+    searchInput_->setStyleSheet(
+        "QLineEdit { "
+        "  padding: 8px 14px; "
+        "  border: 2px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  font-size: 13px; "
+        "  background-color: #fafafa; "
+        "}"
+        "QLineEdit:focus { "
+        "  border-color: #4a90e2; "
+        "  background-color: white; "
+        "}"
+    );
+    searchInput_->setMinimumHeight(36);
+    
     filterCombo_ = new QComboBox;
     filterCombo_->addItem("All Statuses");
     filterCombo_->addItem("Blocked");
     filterCombo_->addItem("Review");
     filterCombo_->addItem("Allowed");
+    filterCombo_->setStyleSheet(
+        "QComboBox { "
+        "  padding: 8px 32px 8px 12px; "
+        "  border: 2px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  font-size: 13px; "
+        "  background-color: #fafafa; "
+        "  min-width: 150px; "
+        "}"
+        "QComboBox:hover { "
+        "  border-color: #4a90e2; "
+        "}"
+        "QComboBox::drop-down { "
+        "  subcontrol-origin: padding; "
+        "  subcontrol-position: top right; "
+        "  width: 30px; "
+        "  border-left: 1px solid #e0e0e0; "
+        "  border-top-right-radius: 8px; "
+        "  border-bottom-right-radius: 8px; "
+        "}"
+        "QComboBox::down-arrow { "
+        "  image: none; "
+        "  border-left: 5px solid transparent; "
+        "  border-right: 5px solid transparent; "
+        "  border-top: 6px solid #666; "
+        "  width: 0; "
+        "  height: 0; "
+        "  margin-right: 8px; "
+        "}"
+        "QComboBox:hover::drop-down { "
+        "  background-color: #f0f0f0; "
+        "}"
+        "QComboBox QAbstractItemView { "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  background-color: white; "
+        "  selection-background-color: #4a90e2; "
+        "  selection-color: white; "
+        "  padding: 4px; "
+        "}"
+    );
+    filterCombo_->setMinimumHeight(36);
     
-    filterLayout->addWidget(new QLabel("Search:"));
-    filterLayout->addWidget(searchInput_);
-    filterLayout->addWidget(new QLabel("Filter:"));
+    // Export/Import buttons
+    QPushButton* exportCsvButton = new QPushButton("Export CSV");
+    exportCsvButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #28a745; "
+        "  color: white; "
+        "  padding: 8px 16px; "
+        "  border: none; "
+        "  border-radius: 6px; "
+        "  font-size: 13px; "
+        "  font-weight: 500; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #218838; "
+        "}"
+        "QPushButton:pressed { "
+        "  background-color: #1e7e34; "
+        "}"
+    );
+    
+    QPushButton* exportJsonButton = new QPushButton("Export JSON");
+    exportJsonButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #17a2b8; "
+        "  color: white; "
+        "  padding: 8px 16px; "
+        "  border: none; "
+        "  border-radius: 6px; "
+        "  font-size: 13px; "
+        "  font-weight: 500; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #138496; "
+        "}"
+        "QPushButton:pressed { "
+        "  background-color: #117a8b; "
+        "}"
+    );
+    
+    QPushButton* importButton = new QPushButton("Import Data");
+    importButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #6c757d; "
+        "  color: white; "
+        "  padding: 8px 16px; "
+        "  border: none; "
+        "  border-radius: 6px; "
+        "  font-size: 13px; "
+        "  font-weight: 500; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #5a6268; "
+        "}"
+        "QPushButton:pressed { "
+        "  background-color: #545b62; "
+        "}"
+    );
+    
+    connect(exportCsvButton, &QPushButton::clicked, this, &MainWindow::onExportCsv);
+    connect(exportJsonButton, &QPushButton::clicked, this, &MainWindow::onExportJson);
+    connect(importButton, &QPushButton::clicked, this, &MainWindow::onImportData);
+    
+    filterLayout->addWidget(searchInput_, 1);
     filterLayout->addWidget(filterCombo_);
-    filterLayout->addStretch();
+    filterLayout->addWidget(exportCsvButton);
+    filterLayout->addWidget(exportJsonButton);
+    filterLayout->addWidget(importButton);
     
-    leftLayout->addLayout(filterLayout);
+    leftLayout->addWidget(filterCard);
+    
+    // Table Container Card
+    QFrame* tableCard = new QFrame;
+    tableCard->setObjectName("tableCard");
+    tableCard->setStyleSheet(
+        "QFrame#tableCard { "
+        "  background-color: white; "
+        "  border-radius: 12px; "
+        "  border: 1px solid #e0e0e0; "
+        "}"
+    );
+    QVBoxLayout* tableCardLayout = new QVBoxLayout(tableCard);
+    tableCardLayout->setContentsMargins(0, 0, 0, 0);
+    tableCardLayout->setSpacing(0);
     
     // Table
     tableView_ = new QTableView;
+    tableView_->setStyleSheet(
+        "QTableView { "
+        "  border: none; "
+        "  border-radius: 12px; "
+        "  gridline-color: #f0f0f0; "
+        "  font-size: 13px; "
+        "}"
+        "QTableView::item { "
+        "  padding: 8px; "
+        "  border-bottom: 1px solid #f0f0f0; "
+        "}"
+        "QHeaderView::section { "
+        "  background-color: #fafafa; "
+        "  padding: 10px; "
+        "  border: none; "
+        "  border-bottom: 2px solid #e0e0e0; "
+        "  font-weight: 600; "
+        "  font-size: 13px; "
+        "  color: #555; "
+        "}"
+    );
+    
     model_ = new DashboardModel(this);
     
     // Proxy Model
@@ -295,20 +563,52 @@ void MainWindow::setupRedditScraperTab() {
     proxyModel_->setSourceModel(model_);
     
     tableView_->setModel(proxyModel_);
+    tableView_->setItemDelegate(new DashboardItemDelegate(this));  // Custom delegate for row coloring
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection);
     tableView_->horizontalHeader()->setStretchLastSection(true);
-    tableView_->setAlternatingRowColors(true);
+    tableView_->setAlternatingRowColors(false);
+    tableView_->setShowGrid(false);
+    tableView_->verticalHeader()->setVisible(false);
+    tableView_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    tableView_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     
-    leftLayout->addWidget(tableView_);
+    tableCardLayout->addWidget(tableView_);
+    leftLayout->addWidget(tableCard, 1);
     splitter->addWidget(leftWidget);
     
-    // Right: Detail panel
-    detailPanel_ = new DetailPanel(this);
-    splitter->addWidget(detailPanel_);
+    // Right: Detail panel with card styling
+    QWidget* rightWidget = new QWidget;
+    QVBoxLayout* rightLayout = new QVBoxLayout(rightWidget);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
     
+    QFrame* detailCard = new QFrame;
+    detailCard->setObjectName("detailCard");
+    detailCard->setStyleSheet(
+        "QFrame#detailCard { "
+        "  background-color: white; "
+        "  border-radius: 12px; "
+        "  border: 1px solid #e0e0e0; "
+        "}"
+    );
+    QVBoxLayout* detailCardLayout = new QVBoxLayout(detailCard);
+    detailCardLayout->setContentsMargins(0, 0, 0, 0);
+    
+    detailPanel_ = new DetailPanel(this);
+    detailCardLayout->addWidget(detailPanel_);
+    rightLayout->addWidget(detailCard);
+    
+    splitter->addWidget(rightWidget);
     splitter->setStretchFactor(0, 2);
     splitter->setStretchFactor(1, 1);
+    splitter->setHandleWidth(8);
+    splitter->setStyleSheet(
+        "QSplitter::handle { "
+        "  background-color: transparent; "
+        "  margin: 0 4px; "
+        "}"
+    );
     
     mainLayout->addWidget(splitter);
     
@@ -318,27 +618,28 @@ void MainWindow::setupRedditScraperTab() {
 
 void MainWindow::setupChatbotTab() {
     chatbotPanel_ = new ChatbotPanel(this);
-    tabWidget_->addTab(chatbotPanel_, "💬 AI Chatbot (Railguard)");
+    tabWidget_->addTab(chatbotPanel_, "AI Chatbot (Railguard)");
 }
 
 void MainWindow::setupAIDetectorTabs() {
     // AI Text Detector
     aiTextDetectorPanel_ = new AITextDetectorPanel(this);
-    tabWidget_->addTab(aiTextDetectorPanel_, "📝 AI Text Detector");
+    tabWidget_->addTab(aiTextDetectorPanel_, "AI Text Detector");
     
     // AI Image Detector  
     aiImageDetectorPanel_ = new AIImageDetectorPanel(this);
-    tabWidget_->addTab(aiImageDetectorPanel_, "🖼️ AI Image Detector");
+    tabWidget_->addTab(aiImageDetectorPanel_, "AI Image Detector");
 }
 
 void MainWindow::setupConnections() {
-    connect(startButton_, &QPushButton::clicked, this, &MainWindow::onStartScraping);
-    connect(stopButton_, &QPushButton::clicked, this, &MainWindow::onStopScraping);
+    connect(toggleScrapingButton_, &QPushButton::clicked, this, &MainWindow::onToggleScraping);
     connect(tableView_->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::onTableSelectionChanged);
     connect(railguardOverlay_, &RailguardOverlay::reviewRequested,
             this, &MainWindow::onReviewRequested);
     connect(railguardOverlay_, &RailguardOverlay::overrideAction,
+            this, &MainWindow::onOverrideAction);
+    connect(detailPanel_, &DetailPanel::actionRequested,
             this, &MainWindow::onOverrideAction);
     connect(detailPanel_, &DetailPanel::processCommentsRequested,
             this, &MainWindow::onProcessCommentsRequested);
@@ -360,36 +661,74 @@ void MainWindow::loadExistingData() {
     statusBar()->showMessage("Loaded previous session items", 3000);
 }
 
-void MainWindow::onStartScraping() {
-    QString subreddit = subredditInput_->text().trimmed();
-    if (subreddit.isEmpty()) {
-        QMessageBox::warning(this, "Invalid Input", "Please enter a subreddit name");
-        return;
+void MainWindow::onToggleScraping() {
+    if (scraper_->isScraping()) {
+        // Stop scraping
+        scraper_->stop();
+        
+        // Clear the processing queue
+        {
+            QMutexLocker locker(&queueMutex_);
+            processingQueue_.clear();
+            processingActive_ = false;
+        }
+        
+        toggleScrapingButton_->setText("▶ Start Scraping");
+        toggleScrapingButton_->setStyleSheet(
+            "QPushButton { "
+            "  padding: 10px 24px; "
+            "  background-color: #4a90e2; "
+            "  color: white; "
+            "  border: none; "
+            "  border-radius: 8px; "
+            "  font-size: 14px; "
+            "  font-weight: 600; "
+            "  min-width: 150px; "
+            "}"
+            "QPushButton:hover { "
+            "  background-color: #357abd; "
+            "}"
+            "QPushButton:pressed { "
+            "  background-color: #2868a8; "
+            "}"
+        );
+        scrapingStatusLabel_->setText("");
+        statusLabel_->setText("Stopped");
+        Logger::info("Scraping stopped and processing queue cleared");
+    } else {
+        // Start scraping
+        QString subreddit = subredditInput_->text().trimmed();
+        if (subreddit.isEmpty()) {
+            QMessageBox::warning(this, "Invalid Input", "Please enter a subreddit name");
+            return;
+        }
+        
+        std::vector<std::string> subreddits = {subreddit.toStdString()};
+        scraper_->setSubreddits(subreddits);
+        scraper_->start(60);  // Scrape every 60 seconds
+        
+        toggleScrapingButton_->setText("⏸ Stop Scraping");
+        toggleScrapingButton_->setStyleSheet(
+            "QPushButton { "
+            "  padding: 10px 24px; "
+            "  background-color: #dc3545; "
+            "  color: white; "
+            "  border: none; "
+            "  border-radius: 8px; "
+            "  font-size: 14px; "
+            "  font-weight: 600; "
+            "  min-width: 150px; "
+            "}"
+            "QPushButton:hover { "
+            "  background-color: #c82333; "
+            "}"
+            "QPushButton:pressed { "
+            "  background-color: #bd2130; "
+            "}"
+        );
+        scrapingStatusLabel_->setText("Scraping...");
+        statusLabel_->setText("Scraping: " + subreddit);
     }
-    
-    std::vector<std::string> subreddits = {subreddit.toStdString()};
-    scraper_->setSubreddits(subreddits);
-    scraper_->start(60);  // Scrape every 60 seconds
-    
-    startButton_->setEnabled(false);
-    stopButton_->setEnabled(true);
-    statusLabel_->setText("Scraping: " + subreddit);
-}
-
-void MainWindow::onStopScraping() {
-    scraper_->stop();
-    
-    // Clear the processing queue
-    {
-        QMutexLocker locker(&queueMutex_);
-        processingQueue_.clear();
-        processingActive_ = false;
-    }
-    
-    startButton_->setEnabled(true);
-    stopButton_->setEnabled(false);
-    statusLabel_->setText("Stopped");
-    Logger::info("Scraping stopped and processing queue cleared");
 }
 
 void MainWindow::onItemScraped(const ContentItem& item) {
@@ -577,7 +916,7 @@ void MainWindow::applyTheme() {
         buttonBg = "#2d2d2d";
         buttonHover = "#3d3d3d";
         
-        themeToggleButton_->setText("☀️ Light");
+        themeToggleButton_->setText("Light");
         themeToggleButton_->setStyleSheet(
             "QPushButton { "
             "  background-color: #2d2d2d; "
@@ -637,7 +976,6 @@ void MainWindow::applyTheme() {
         "  color: white; "
         "}"
         "QTableView { "
-        "  background-color: %1; "
         "  color: %2; "
         "  border: 1px solid %3; "
         "  gridline-color: %3; "
@@ -724,6 +1062,384 @@ void MainWindow::applyTheme() {
     }
     if (aiImageDetectorPanel_) {
         aiImageDetectorPanel_->setTheme(isDarkTheme_);
+    }
+}
+
+void MainWindow::onExportCsv() {
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        "Export to CSV",
+        QDir::homePath() + "/modai_export.csv",
+        "CSV Files (*.csv);;All Files (*)"
+    );
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Export Error", "Could not open file for writing: " + fileName);
+        return;
+    }
+    
+    QTextStream out(&file);
+    
+    // Write CSV header
+    out << "ID,Timestamp,Author,Subreddit,Content Type,Text,Image Path,";
+    out << "AI Score,AI Label,Moderation Sexual,Moderation Violence,Moderation Hate,Moderation Drugs,";
+    out << "Additional Labels,Status,Rule ID\n";
+    
+    // Write data rows
+    for (int i = 0; i < model_->rowCount(); ++i) {
+        ContentItem item = model_->getItem(i);
+        
+        // Escape CSV fields (wrap in quotes if they contain commas, quotes, or newlines)
+        auto escapeField = [](const std::string& field) -> QString {
+            QString qfield = QString::fromStdString(field);
+            if (qfield.contains(',') || qfield.contains('"') || qfield.contains('\n')) {
+                qfield.replace('"', "\"\"");
+                return "\"" + qfield + "\"";
+            }
+            return qfield;
+        };
+        
+        out << escapeField(item.id) << ",";
+        out << escapeField(item.timestamp) << ",";
+        out << escapeField(item.author.value_or("N/A")) << ",";
+        out << escapeField(item.subreddit) << ",";
+        out << escapeField(item.content_type) << ",";
+        out << escapeField(item.text.value_or("")) << ",";
+        out << escapeField(item.image_path.value_or("")) << ",";
+        out << QString::number(item.ai_detection.ai_score, 'f', 4) << ",";
+        out << escapeField(item.ai_detection.label) << ",";
+        out << QString::number(item.moderation.labels.sexual, 'f', 4) << ",";
+        out << QString::number(item.moderation.labels.violence, 'f', 4) << ",";
+        out << QString::number(item.moderation.labels.hate, 'f', 4) << ",";
+        out << QString::number(item.moderation.labels.drugs, 'f', 4) << ",";
+        
+        // Additional labels as JSON-like string
+        QString additionalLabels = "{";
+        bool first = true;
+        for (const auto& [label, conf] : item.moderation.labels.additional_labels) {
+            if (!first) additionalLabels += ", ";
+            additionalLabels += QString::fromStdString(label) + ": " + QString::number(conf, 'f', 4);
+            first = false;
+        }
+        additionalLabels += "}";
+        out << escapeField(additionalLabels.toStdString()) << ",";
+        
+        out << escapeField(item.decision.auto_action) << ",";
+        out << escapeField(item.decision.rule_id) << "\n";
+    }
+    
+    file.close();
+    
+    QMessageBox::information(this, "Export Complete", 
+        QString("Successfully exported %1 items to:\n%2").arg(model_->rowCount()).arg(fileName));
+}
+
+void MainWindow::onExportJson() {
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        "Export to JSON",
+        QDir::homePath() + "/modai_export.json",
+        "JSON Files (*.json);;All Files (*)"
+    );
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Export Error", "Could not open file for writing: " + fileName);
+        return;
+    }
+    
+    QTextStream out(&file);
+    
+    // Write JSON array
+    out << "[\n";
+    for (int i = 0; i < model_->rowCount(); ++i) {
+        ContentItem item = model_->getItem(i);
+        
+        if (i > 0) {
+            out << ",\n";
+        }
+        
+        // Use ContentItem's toJson method
+        out << QString::fromStdString(item.toJson());
+    }
+    out << "\n]\n";
+    
+    file.close();
+    
+    QMessageBox::information(this, "Export Complete", 
+        QString("Successfully exported %1 items to:\n%2").arg(model_->rowCount()).arg(fileName));
+}
+
+void MainWindow::onImportData() {
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        "Import Data",
+        QDir::homePath(),
+        "Data Files (*.csv *.json);;CSV Files (*.csv);;JSON Files (*.json);;All Files (*)"
+    );
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Import Error", "Could not open file for reading: " + fileName);
+        return;
+    }
+    
+    // Determine file type by extension
+    bool isJson = fileName.endsWith(".json", Qt::CaseInsensitive);
+    bool isCsv = fileName.endsWith(".csv", Qt::CaseInsensitive);
+    
+    if (!isJson && !isCsv) {
+        QMessageBox::warning(this, "Import Error", "Unknown file format. Please use .csv or .json files.");
+        file.close();
+        return;
+    }
+    
+    int importedCount = 0;
+    QTextStream in(&file);
+    
+    try {
+        if (isJson) {
+            // Read entire JSON file
+            QString jsonContent = in.readAll();
+            
+            // Parse as JSON array
+            QJsonDocument doc = QJsonDocument::fromJson(jsonContent.toUtf8());
+            if (!doc.isArray()) {
+                throw std::runtime_error("JSON file must contain an array of items");
+            }
+            
+            QJsonArray itemsArray = doc.array();
+            
+            // Ask user if they want to clear existing data
+            if (model_->rowCount() > 0) {
+                auto reply = QMessageBox::question(
+                    this,
+                    "Import Data",
+                    QString("Current table has %1 items. Do you want to clear them before importing?").arg(model_->rowCount()),
+                    QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel
+                );
+                
+                if (reply == QMessageBox::Cancel) {
+                    file.close();
+                    return;
+                }
+                
+                if (reply == QMessageBox::Yes) {
+                    model_->clear();
+                }
+            }
+            
+            // Import each item
+            for (const QJsonValue& value : itemsArray) {
+                if (value.isObject()) {
+                    QJsonDocument itemDoc(value.toObject());
+                    QString itemJson = itemDoc.toJson(QJsonDocument::Compact);
+                    
+                    try {
+                        ContentItem item = ContentItem::fromJson(itemJson.toStdString());
+                        model_->addItem(item);
+                        importedCount++;
+                    } catch (const std::exception& e) {
+                        Logger::warn("Failed to parse item: " + std::string(e.what()));
+                    }
+                }
+            }
+            
+        } else if (isCsv) {
+            // Read entire file content for proper multi-line CSV parsing
+            QString content = in.readAll();
+            
+            // Function to read a complete CSV record (handles multi-line quoted fields)
+            auto readCSVRecord = [](const QString& content, int& pos) -> QString {
+                QString record;
+                bool inQuotes = false;
+                
+                while (pos < content.length()) {
+                    QChar c = content[pos];
+                    
+                    if (c == '"') {
+                        inQuotes = !inQuotes;
+                        record += c;
+                        pos++;
+                    } else if ((c == '\n' || c == '\r') && !inQuotes) {
+                        // End of record (skip \r\n or \n)
+                        if (c == '\r' && pos + 1 < content.length() && content[pos + 1] == '\n') {
+                            pos += 2;
+                        } else {
+                            pos++;
+                        }
+                        break;
+                    } else {
+                        record += c;
+                        pos++;
+                    }
+                }
+                return record;
+            };
+            
+            int contentPos = 0;
+            
+            // Read header line
+            QString headerLine = readCSVRecord(content, contentPos);
+            
+            // Verify header
+            if (!headerLine.startsWith("ID,Timestamp")) {
+                throw std::runtime_error("Invalid CSV format. Expected header starting with 'ID,Timestamp'");
+            }
+            
+            // Ask user if they want to clear existing data
+            if (model_->rowCount() > 0) {
+                auto reply = QMessageBox::question(
+                    this,
+                    "Import Data",
+                    QString("Current table has %1 items. Do you want to clear them before importing?").arg(model_->rowCount()),
+                    QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel
+                );
+                
+                if (reply == QMessageBox::Cancel) {
+                    file.close();
+                    return;
+                }
+                
+                if (reply == QMessageBox::Yes) {
+                    model_->clear();
+                }
+            }
+            
+            auto parseCSVField = [](const QString& record, int& pos) -> QString {
+                QString field;
+                if (pos >= record.length()) return field;
+                
+                if (record[pos] == '"') {
+                    // Quoted field
+                    pos++; // Skip opening quote
+                    while (pos < record.length()) {
+                        if (record[pos] == '"') {
+                            if (pos + 1 < record.length() && record[pos + 1] == '"') {
+                                // Escaped quote
+                                field += '"';
+                                pos += 2;
+                            } else {
+                                // End of quoted field
+                                pos++; // Skip closing quote
+                                break;
+                            }
+                        } else {
+                            field += record[pos];
+                            pos++;
+                        }
+                    }
+                    // Skip comma after quoted field
+                    if (pos < record.length() && record[pos] == ',') {
+                        pos++;
+                    }
+                } else {
+                    // Unquoted field
+                    while (pos < record.length() && record[pos] != ',') {
+                        field += record[pos];
+                        pos++;
+                    }
+                    if (pos < record.length()) {
+                        pos++; // Skip comma
+                    }
+                }
+                return field;
+            };
+            
+            // Parse data records
+            while (contentPos < content.length()) {
+                QString record = readCSVRecord(content, contentPos);
+                if (record.trimmed().isEmpty()) continue;
+                
+                int pos = 0;
+                ContentItem item;
+                
+                try {
+                    // Parse CSV fields in order
+                    item.id = parseCSVField(record, pos).toStdString();
+                    item.timestamp = parseCSVField(record, pos).toStdString();
+                    
+                    QString author = parseCSVField(record, pos);
+                    if (author != "N/A" && !author.isEmpty()) {
+                        item.author = author.toStdString();
+                    }
+                    
+                    item.subreddit = parseCSVField(record, pos).toStdString();
+                    item.content_type = parseCSVField(record, pos).toStdString();
+                    
+                    QString text = parseCSVField(record, pos);
+                    if (!text.isEmpty()) {
+                        item.text = text.toStdString();
+                    }
+                    
+                    QString imagePath = parseCSVField(record, pos);
+                    if (!imagePath.isEmpty()) {
+                        item.image_path = imagePath.toStdString();
+                    }
+                    
+                    item.ai_detection.ai_score = parseCSVField(record, pos).toDouble();
+                    item.ai_detection.label = parseCSVField(record, pos).toStdString();
+                    item.moderation.labels.sexual = parseCSVField(record, pos).toDouble();
+                    item.moderation.labels.violence = parseCSVField(record, pos).toDouble();
+                    item.moderation.labels.hate = parseCSVField(record, pos).toDouble();
+                    item.moderation.labels.drugs = parseCSVField(record, pos).toDouble();
+                    
+                    // Parse additional labels field: format is "{label1: value1, label2: value2}"
+                    QString additionalLabelsStr = parseCSVField(record, pos);
+                    if (!additionalLabelsStr.isEmpty() && additionalLabelsStr != "{}") {
+                        // Remove braces
+                        QString inner = additionalLabelsStr.mid(1, additionalLabelsStr.length() - 2);
+                        if (!inner.isEmpty()) {
+                            // Split by ", " to get individual label:value pairs
+                            QStringList pairs = inner.split(", ");
+                            for (const QString& pair : pairs) {
+                                int colonPos = pair.lastIndexOf(": ");
+                                if (colonPos > 0) {
+                                    QString label = pair.left(colonPos).trimmed();
+                                    QString valueStr = pair.mid(colonPos + 2).trimmed();
+                                    double value = valueStr.toDouble();
+                                    if (!label.isEmpty() && value > 0) {
+                                        item.moderation.labels.additional_labels[label.toStdString()] = value;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    item.decision.auto_action = parseCSVField(record, pos).toStdString();
+                    item.decision.rule_id = parseCSVField(record, pos).toStdString();
+                    
+                    model_->addItem(item);
+                    importedCount++;
+                    
+                } catch (const std::exception& e) {
+                    Logger::warn("Failed to parse CSV record: " + std::string(e.what()));
+                }
+            }
+        }
+        
+        file.close();
+        
+        QMessageBox::information(this, "Import Complete", 
+            QString("Successfully imported %1 items from:\n%2").arg(importedCount).arg(fileName));
+            
+    } catch (const std::exception& e) {
+        file.close();
+        QMessageBox::critical(this, "Import Error", 
+            QString("Failed to import data: %1").arg(e.what()));
     }
 }
 

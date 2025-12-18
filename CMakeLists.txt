@@ -75,6 +75,7 @@ set(HEADERS
     include/ui/ChatbotPanel.h
     include/ui/AITextDetectorPanel.h
     include/ui/AIImageDetectorPanel.h
+    include/ui/DashboardItemDelegate.h
 )
 
 set(SOURCES
@@ -96,6 +97,7 @@ set(SOURCES
     src/ui/MainWindow.cpp
     src/ui/DashboardProxyModel.cpp
     src/ui/DashboardModel.cpp
+    src/ui/DashboardItemDelegate.cpp
     src/ui/DetailPanel.cpp
     src/ui/RailguardOverlay.cpp
     src/ui/ReviewDialog.cpp

@@ -3,6 +3,7 @@
 #include "core/ContentItem.h"
 #include "network/HttpClient.h"
 #include "network/RateLimiter.h"
+#include "detectors/ImageModerator.h"
 #include <QObject>
 #include <QTimer>
 #include <string>
@@ -19,6 +20,7 @@ class RedditScraper : public QObject {
 
 private:
     std::unique_ptr<HttpClient> httpClient_;
+    std::unique_ptr<ImageModerator> imageModerator_;
     std::string clientId_;
     std::string clientSecret_;
     std::string userAgent_;
@@ -40,6 +42,7 @@ private:
     ContentItem parseComment(const nlohmann::json& commentJson);
     void parseCommentsRecursive(const nlohmann::json& children, std::vector<ContentItem>& items);
     std::string downloadImage(const std::string& url);
+    void moderateImage(ContentItem& item);
 
 public:
     RedditScraper(std::unique_ptr<HttpClient> httpClient,
@@ -49,6 +52,7 @@ public:
                   const std::string& storagePath,
                   QObject* parent = nullptr);
     
+    void setImageModerator(std::unique_ptr<ImageModerator> imageModerator);
     void setSubreddits(const std::vector<std::string>& subreddits);
     void start(int intervalSeconds = 60);
     void stop();

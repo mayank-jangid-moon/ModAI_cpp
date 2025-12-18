@@ -12,6 +12,8 @@ public:
 
     void setStatusFilter(const QString& status);
     void setSearchFilter(const QString& text);
+    
+    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
 
 protected:
     bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;

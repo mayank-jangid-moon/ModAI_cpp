@@ -1,5 +1,6 @@
 #include "ui/DashboardModel.h"
 #include <QColor>
+#include <QBrush>
 #include <QString>
 
 namespace ModAI {
@@ -41,16 +42,15 @@ QVariant DashboardModel::data(const QModelIndex& index, int role) const {
             case 5: return QString::number(item.ai_detection.ai_score, 'f', 2);
             case 6: {
                 QString labels;
-                // Show any non-zero labels (Hive scale: 0-3 converted to 0.0-1.0)
-                // Value 1 (mild) = 0.33, Value 2 (medium) = 0.67, Value 3 (high) = 1.0
-                if (item.moderation.labels.sexual > 0.0) labels += "sexual ";
-                if (item.moderation.labels.violence > 0.0) labels += "violence ";
-                if (item.moderation.labels.hate > 0.0) labels += "hate ";
-                if (item.moderation.labels.drugs > 0.0) labels += "drugs ";
+                // Only show labels with value > 0.3 (filters out very mild detections)
+                if (item.moderation.labels.sexual > 0.3) labels += "sexual ";
+                if (item.moderation.labels.violence > 0.3) labels += "violence ";
+                if (item.moderation.labels.hate > 0.3) labels += "hate ";
+                if (item.moderation.labels.drugs > 0.3) labels += "drugs ";
                 
-                // Add additional labels
+                // Add additional labels (only if confidence > 0.3)
                 for (const auto& [label, conf] : item.moderation.labels.additional_labels) {
-                    if (conf > 0.0) {
+                    if (conf > 0.3) {
                         labels += QString::fromStdString(label) + " ";
                     }
                 }
@@ -64,13 +64,67 @@ QVariant DashboardModel::data(const QModelIndex& index, int role) const {
     }
     
     if (role == Qt::BackgroundRole) {
-        // Color based on severity
+        // Priority 1: Moderation-based flagging (darker red for blocked content)
         if (item.decision.auto_action == "block") {
-            return QColor(255, 200, 200);  // Light red
-        } else if (item.decision.auto_action == "review") {
-            return QColor(255, 255, 200);  // Light yellow
+            // Check if blocked due to moderation labels (not AI)
+            bool moderationBlocked = (item.moderation.labels.sexual > 0.9 || 
+                                     item.moderation.labels.violence > 0.9 || 
+                                     item.moderation.labels.hate > 0.7 ||
+                                     item.moderation.labels.drugs > 0.9);
+            
+            if (moderationBlocked) {
+                return QBrush(QColor(220, 53, 69));  // Strong red for moderation blocking
+            }
+            // AI-based blocking - make it much more visible
+            return QBrush(QColor(255, 150, 150));  // More visible light red for AI blocking
         }
-        return QVariant();
+        
+        // Priority 2: Review status (yellow for moderation review)
+        if (item.decision.auto_action == "review") {
+            return QBrush(QColor(255, 235, 120));  // More visible yellow
+        }
+        
+        // Priority 3: Check for moderation labels > 0.3 (even if allowed)
+        // This catches content with significant labels that didn't trigger blocking threshold
+        bool hasSignificantLabels = (item.moderation.labels.sexual > 0.3 ||
+                                    item.moderation.labels.violence > 0.3 ||
+                                    item.moderation.labels.hate > 0.3 ||
+                                    item.moderation.labels.drugs > 0.3);
+        
+        // Also check additional labels
+        if (!hasSignificantLabels) {
+            for (const auto& [label, conf] : item.moderation.labels.additional_labels) {
+                if (conf > 0.3) {
+                    hasSignificantLabels = true;
+                    break;
+                }
+            }
+        }
+        
+        if (hasSignificantLabels) {
+            return QBrush(QColor(255, 220, 180));  // Light orange for content with significant labels
+        }
+        
+        // Priority 4: AI detection coloring for allowed content
+        if (item.decision.auto_action == "allow") {
+            float aiScore = item.ai_detection.ai_score;
+            
+            if (aiScore > 0.6 && aiScore <= 0.8) {
+                // Moderate AI confidence - light yellow
+                return QBrush(QColor(255, 245, 180));  // More visible very light yellow
+            } else if (aiScore > 0.8) {
+                // High AI confidence - light red (but passed other checks)
+                return QBrush(QColor(255, 200, 200));  // More visible very light red
+            }
+        }
+        
+        // Return white background for clean content
+        return QBrush(Qt::white);
+    }
+    
+    if (role == Qt::ForegroundRole) {
+        // Ensure text is always readable (black text)
+        return QColor(Qt::black);
     }
     
     return QVariant();

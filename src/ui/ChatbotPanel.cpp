@@ -65,23 +65,50 @@ void ChatbotPanel::setImageModerator(std::shared_ptr<ImageModerator> imageModera
 
 void ChatbotPanel::setupUI() {
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 10, 0, 0);
-    layout->setSpacing(10);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(16);
     
-    // Header
-    auto* headerLabel = new QLabel("🤖 AI Chatbot with Railguard");
+    // Header Card
+    auto* headerCard = new QFrame;
+    headerCard->setStyleSheet(
+        "QFrame { "
+        "  background-color: white; "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 12px; "
+        "  padding: 20px; "
+        "}"
+    );
+    auto* headerLayout = new QVBoxLayout(headerCard);
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(8);
+    
+    auto* headerLabel = new QLabel("AI Chatbot with Railguard");
     QFont headerFont = headerLabel->font();
-    headerFont.setPointSize(14);
+    headerFont.setPointSize(16);
     headerFont.setBold(true);
     headerLabel->setFont(headerFont);
-    headerLabel->setContentsMargins(10, 0, 10, 0);
-    layout->addWidget(headerLabel);
+    headerLabel->setStyleSheet("color: #2c3e50;");
+    headerLayout->addWidget(headerLabel);
     
     auto* infoLabel = new QLabel("Chat with an AI assistant. All responses are moderated by Hive API for safety.");
     infoLabel->setWordWrap(true);
-    infoLabel->setStyleSheet("color: #666; margin-bottom: 5px;");
-    infoLabel->setContentsMargins(10, 0, 10, 0);
-    layout->addWidget(infoLabel);
+    infoLabel->setStyleSheet("color: #7f8c8d; font-size: 13px;");
+    headerLayout->addWidget(infoLabel);
+    
+    layout->addWidget(headerCard);
+    
+    // Chat Area Card
+    auto* chatCard = new QFrame;
+    chatCard->setStyleSheet(
+        "QFrame { "
+        "  background-color: white; "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 12px; "
+        "}"
+    );
+    auto* chatCardLayout = new QVBoxLayout(chatCard);
+    chatCardLayout->setContentsMargins(0, 0, 0, 0);
+    chatCardLayout->setSpacing(0);
     
     // Chat scroll area with message bubbles
     chatScrollArea_ = new QScrollArea;
@@ -92,64 +119,89 @@ void ChatbotPanel::setupUI() {
     chatContainer_ = new QWidget;
     chatLayout_ = new QVBoxLayout(chatContainer_);
     chatLayout_->setSpacing(8);
-    chatLayout_->setContentsMargins(10, 10, 10, 10);
+    chatLayout_->setContentsMargins(20, 20, 20, 20);
     chatLayout_->addStretch();
     
     chatScrollArea_->setWidget(chatContainer_);
     chatScrollArea_->setStyleSheet(
         "QScrollArea { "
-        "  background-color: #f5f5f5; "
-        "  border: 1px solid #ddd; "
-        "  border-radius: 8px; "
+        "  background-color: #f8f9fa; "
+        "  border: none; "
+        "  border-radius: 12px; "
         "}"
     );
-    layout->addWidget(chatScrollArea_, 1);
+    chatCardLayout->addWidget(chatScrollArea_);
+    layout->addWidget(chatCard, 1);
     
-    // Input area
-    auto* inputLayout = new QHBoxLayout;
-    inputLayout->setContentsMargins(10, 0, 10, 10);
-    inputLayout->setSpacing(10);
+    // Input Card
+    auto* inputCard = new QFrame;
+    inputCard->setStyleSheet(
+        "QFrame { "
+        "  background-color: white; "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 12px; "
+        "  padding: 16px; "
+        "}"
+    );
+    auto* inputLayout = new QHBoxLayout(inputCard);
+    inputLayout->setContentsMargins(0, 0, 0, 0);
+    inputLayout->setSpacing(12);
     
     messageInput_ = new QLineEdit;
     messageInput_->setPlaceholderText("Type your message here...");
     messageInput_->setMinimumHeight(45);
     messageInput_->setStyleSheet(
         "QLineEdit { "
-        "  border: 2px solid #ddd; "
-        "  border-radius: 22px; "
-        "  padding: 10px 20px; "
+        "  border: 2px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  padding: 10px 16px; "
         "  font-size: 14px; "
+        "  background-color: #fafafa; "
+        "}"
+        "QLineEdit:focus { "
+        "  border-color: #4a90e2; "
         "  background-color: white; "
         "}"
-        "QLineEdit:focus { border-color: #0066cc; }"
     );
     
     sendButton_ = new QPushButton("Send");
-    sendButton_->setMinimumWidth(90);
+    sendButton_->setMinimumWidth(100);
     sendButton_->setMinimumHeight(45);
     sendButton_->setStyleSheet(
         "QPushButton { "
-        "  background-color: #0066cc; "
+        "  background-color: #4a90e2; "
         "  color: white; "
         "  border: none; "
-        "  border-radius: 22px; "
+        "  border-radius: 8px; "
         "  font-weight: bold; "
         "  font-size: 14px; "
-        "  padding: 0 25px; "
+        "  padding: 10px 24px; "
         "}"
-        "QPushButton:hover { background-color: #0052a3; }"
-        "QPushButton:pressed { background-color: #004080; }"
-        "QPushButton:disabled { background-color: #ccc; }"
+        "QPushButton:hover { background-color: #357abd; }"
+        "QPushButton:pressed { background-color: #2a6496; }"
+        "QPushButton:disabled { background-color: #d0d0d0; }"
     );
     
     inputLayout->addWidget(messageInput_, 1);
     inputLayout->addWidget(sendButton_);
-    layout->addLayout(inputLayout);
+    layout->addWidget(inputCard);
     
-    // Model selection
-    auto* modelLayout = new QHBoxLayout;
+    // Model Selection Card
+    auto* modelCard = new QFrame;
+    modelCard->setStyleSheet(
+        "QFrame { "
+        "  background-color: white; "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 12px; "
+        "  padding: 16px; "
+        "}"
+    );
+    auto* modelLayout = new QHBoxLayout(modelCard);
+    modelLayout->setContentsMargins(0, 0, 0, 0);
+    modelLayout->setSpacing(12);
+    
     auto* modelLabel = new QLabel("AI Model:");
-    modelLabel->setStyleSheet("font-weight: bold; color: #333;");
+    modelLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 14px;");
     
     modelSelector_ = new QComboBox;
     modelSelector_->addItem("GPT-4o Mini (Fast, Vision)", "provider-5/gpt-4o-mini");
@@ -164,28 +216,69 @@ void ChatbotPanel::setupUI() {
     modelSelector_->setMinimumWidth(300);
     modelSelector_->setStyleSheet(
         "QComboBox { "
-        "  padding: 5px; "
-        "  border: 1px solid #ccc; "
-        "  border-radius: 5px; "
-        "  background: white; "
+        "  padding: 8px 32px 8px 12px; "
+        "  border: 2px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  background-color: #fafafa; "
+        "  font-size: 13px; "
+        "}"
+        "QComboBox:focus { "
+        "  border-color: #4a90e2; "
+        "  background-color: white; "
+        "}"
+        "QComboBox::drop-down { "
+        "  subcontrol-origin: padding; "
+        "  subcontrol-position: top right; "
+        "  width: 30px; "
+        "  border-left: 1px solid #e0e0e0; "
+        "  border-top-right-radius: 8px; "
+        "  border-bottom-right-radius: 8px; "
+        "}"
+        "QComboBox::down-arrow { "
+        "  image: none; "
+        "  border-left: 5px solid transparent; "
+        "  border-right: 5px solid transparent; "
+        "  border-top: 6px solid #666; "
+        "  width: 0; "
+        "  height: 0; "
+        "  margin-right: 8px; "
+        "}"
+        "QComboBox:hover::drop-down { "
+        "  background-color: #f0f0f0; "
+        "}"
+        "QComboBox QAbstractItemView { "
+        "  border: 1px solid #e0e0e0; "
+        "  border-radius: 8px; "
+        "  background-color: white; "
+        "  selection-background-color: #4a90e2; "
+        "  selection-color: white; "
+        "  padding: 4px; "
         "}"
     );
     
+    clearButton_ = new QPushButton("Clear Chat");
+    clearButton_->setMinimumHeight(38);
+    clearButton_->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #6c757d; "
+        "  color: white; "
+        "  border: none; "
+        "  border-radius: 8px; "
+        "  font-weight: bold; "
+        "  padding: 8px 20px; "
+        "}"
+        "QPushButton:hover { background-color: #5a6268; }"
+    );
+    
+    statusLabel_ = new QLabel("Ready");
+    statusLabel_->setStyleSheet("color: #7f8c8d; font-size: 13px;");
+    
     modelLayout->addWidget(modelLabel);
     modelLayout->addWidget(modelSelector_);
+    modelLayout->addWidget(clearButton_);
     modelLayout->addStretch();
-    layout->addLayout(modelLayout);
-    
-    // Controls
-    auto* controlLayout = new QHBoxLayout;
-    clearButton_ = new QPushButton("Clear Chat");
-    statusLabel_ = new QLabel("Ready");
-    statusLabel_->setStyleSheet("color: #666;");
-    
-    controlLayout->addWidget(clearButton_);
-    controlLayout->addStretch();
-    controlLayout->addWidget(statusLabel_);
-    layout->addLayout(controlLayout);
+    modelLayout->addWidget(statusLabel_);
+    layout->addWidget(modelCard);
     
     // Connections
     connect(sendButton_, &QPushButton::clicked, this, &ChatbotPanel::onSendMessage);

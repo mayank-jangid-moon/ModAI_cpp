@@ -23,6 +23,7 @@ RedditScraper::RedditScraper(std::unique_ptr<HttpClient> httpClient,
                              QObject* parent)
     : QObject(parent)
     , httpClient_(std::move(httpClient))
+    , imageModerator_(nullptr)
     , clientId_(clientId)
     , clientSecret_(clientSecret)
     , userAgent_(userAgent)
@@ -39,6 +40,11 @@ RedditScraper::RedditScraper(std::unique_ptr<HttpClient> httpClient,
 
     scrapeTimer_ = new QTimer(this);
     connect(scrapeTimer_, &QTimer::timeout, this, &RedditScraper::performScrape);
+}
+
+void RedditScraper::setImageModerator(std::unique_ptr<ImageModerator> imageModerator) {
+    imageModerator_ = std::move(imageModerator);
+    Logger::info("Image moderator set for Reddit scraper");
 }
 
 void RedditScraper::authenticate() {
@@ -180,15 +186,45 @@ ContentItem RedditScraper::parsePost(const nlohmann::json& postJson) {
         if (url.find(".jpg") != std::string::npos || 
             url.find(".png") != std::string::npos ||
             url.find(".jpeg") != std::string::npos ||
-            url.find("i.redd.it") != std::string::npos) {
+            url.find(".webp") != std::string::npos ||
+            url.find("i.redd.it") != std::string::npos ||
+            url.find("i.imgur.com") != std::string::npos) {
             item.content_type = "image";
+            
+            // Store title and selftext as text for text moderation
+            std::string combinedText;
+            if (postJson.contains("title")) {
+                std::string title = postJson["title"].get<std::string>();
+                if (!title.empty()) {
+                    combinedText = title;
+                }
+            }
+            
+            // Also include selftext body if present
+            if (postJson.contains("selftext")) {
+                std::string selftext = postJson["selftext"].get<std::string>();
+                if (!selftext.empty() && selftext != "[deleted]" && selftext != "[removed]") {
+                    if (!combinedText.empty()) {
+                        combinedText += "\n\n" + selftext;
+                    } else {
+                        combinedText = selftext;
+                    }
+                }
+            }
+            
+            if (!combinedText.empty()) {
+                item.text = combinedText;
+                Logger::info("Image post has text: " + combinedText.substr(0, 50));
+            }
             
             // Download image
             std::string localPath = downloadImage(url);
             if (!localPath.empty()) {
                 item.image_path = localPath;
+                // Image moderation will be handled by ModerationEngine after queuing
             } else {
                 item.image_path = url;
+                Logger::warn("Failed to download image from " + url + ", cannot moderate");
             }
         } else {
             item.content_type = "text";
@@ -311,6 +347,113 @@ std::string RedditScraper::downloadImage(const std::string& url) {
     }
     
     return ""; // Return empty if failed
+}
+
+void RedditScraper::moderateImage(ContentItem& item) {
+    if (!imageModerator_) {
+        Logger::warn("Image moderator not set, skipping image moderation for " + item.id);
+        return;
+    }
+    
+    if (!item.image_path.has_value() || item.image_path->empty()) {
+        Logger::warn("No image path for item " + item.id);
+        return;
+    }
+    
+    try {
+        // Read image file into bytes
+        QFile imageFile(QString::fromStdString(*item.image_path));
+        if (!imageFile.open(QIODevice::ReadOnly)) {
+            Logger::error("Failed to open image file: " + *item.image_path);
+            return;
+        }
+        
+        QByteArray imageData = imageFile.readAll();
+        imageFile.close();
+        
+        // Convert to vector<uint8_t>
+        std::vector<uint8_t> imageBytes(imageData.begin(), imageData.end());
+        
+        // Determine MIME type from file extension
+        std::string mimeType = "image/jpeg";
+        if (item.image_path->find(".png") != std::string::npos) {
+            mimeType = "image/png";
+        } else if (item.image_path->find(".webp") != std::string::npos) {
+            mimeType = "image/webp";
+        }
+        
+        Logger::info("Moderating image: " + *item.image_path + " (size: " + std::to_string(imageBytes.size()) + " bytes)");
+        
+        // Analyze image
+        auto result = imageModerator_->analyzeImage(imageBytes, mimeType);
+        
+        // Store moderation results
+        item.moderation.provider = "hive_visual";
+        
+        // Map Hive categories to our moderation labels
+        for (const auto& [category, score] : result.labels) {
+            // NSFW categories
+            if (category == "general_nsfw" || 
+                category.find("yes_female_nudity") == 0 ||
+                category.find("yes_male_nudity") == 0 ||
+                category.find("yes_sexual_activity") == 0 ||
+                category.find("yes_sexual_intent") == 0) {
+                item.moderation.labels.sexual = std::max(item.moderation.labels.sexual, score);
+            }
+            // Violence categories
+            else if (category.find("gun_") == 0 ||
+                     category.find("knife_") == 0 ||
+                     category.find("bloody") != std::string::npos ||
+                     category == "yes_fight" ||
+                     category.find("corpse") != std::string::npos) {
+                item.moderation.labels.violence = std::max(item.moderation.labels.violence, score);
+            }
+            // Hate categories
+            else if (category == "yes_nazi" ||
+                     category == "yes_kkk" ||
+                     category == "yes_terrorist" ||
+                     category == "yes_confederate") {
+                item.moderation.labels.hate = std::max(item.moderation.labels.hate, score);
+            }
+            // Drugs categories
+            else if (category == "yes_pills" ||
+                     category == "yes_smoking" ||
+                     category == "yes_marijuana" ||
+                     category.find("injectables") != std::string::npos) {
+                item.moderation.labels.drugs = std::max(item.moderation.labels.drugs, score);
+            }
+            
+            // Store all labels in additional_labels
+            item.moderation.labels.additional_labels[category] = score;
+        }
+        
+        // Determine auto action based on thresholds
+        const double BLOCK_THRESHOLD = 0.7;
+        const double REVIEW_THRESHOLD = 0.5;
+        
+        double maxScore = std::max({
+            item.moderation.labels.sexual,
+            item.moderation.labels.violence,
+            item.moderation.labels.hate,
+            item.moderation.labels.drugs
+        });
+        
+        if (maxScore >= BLOCK_THRESHOLD) {
+            item.decision.auto_action = "block";
+            item.decision.threshold_triggered = true;
+            Logger::info("Image blocked: " + item.id + " (score: " + std::to_string(maxScore) + ")");
+        } else if (maxScore >= REVIEW_THRESHOLD) {
+            item.decision.auto_action = "review";
+            item.decision.threshold_triggered = true;
+            Logger::info("Image flagged for review: " + item.id + " (score: " + std::to_string(maxScore) + ")");
+        } else {
+            item.decision.auto_action = "allow";
+            Logger::info("Image allowed: " + item.id + " (score: " + std::to_string(maxScore) + ")");
+        }
+        
+    } catch (const std::exception& e) {
+        Logger::error("Exception moderating image: " + std::string(e.what()));
+    }
 }
 
 void RedditScraper::setSubreddits(const std::vector<std::string>& subreddits) {

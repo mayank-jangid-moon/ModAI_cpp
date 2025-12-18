@@ -44,8 +44,8 @@ private:
     DashboardModel* model_;
     DashboardProxyModel* proxyModel_;
     DetailPanel* detailPanel_;
-    QPushButton* startButton_;
-    QPushButton* stopButton_;
+    QPushButton* toggleScrapingButton_;
+    QLabel* scrapingStatusLabel_;
     QLineEdit* subredditInput_;
     QLineEdit* searchInput_;
     QComboBox* filterCombo_;
@@ -83,8 +83,7 @@ private:
     void cleanupOnExit();
 
 private slots:
-    void onStartScraping();
-    void onStopScraping();
+    void onToggleScraping();
     void onItemProcessed(const ContentItem& item);
     void onItemScraped(const ContentItem& item);
     void processNextItem();
@@ -95,6 +94,9 @@ private slots:
     void onFilterChanged(int index);
     void onLoadHistory();
     void onProcessCommentsRequested(const std::string& subreddit, const std::string& postId);
+    void onExportCsv();
+    void onExportJson();
+    void onImportData();
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
