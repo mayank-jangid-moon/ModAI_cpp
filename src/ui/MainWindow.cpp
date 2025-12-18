@@ -209,48 +209,43 @@ void MainWindow::setupUI() {
     setupChatbotTab();
     setupAIDetectorTabs();
     
-    // Status bar
+    // Status bar with modern styling
     statusLabel_ = new QLabel("Ready");
+    statusLabel_->setStyleSheet(
+        "QLabel { "
+        "  color: #6c757d; "
+        "  font-size: 13px; "
+        "  padding: 4px 8px; "
+        "  background-color: transparent; "
+        "  border: none; "
+        "}"
+    );
     statusBar()->addWidget(statusLabel_);
     
-    // Theme toggle button in top right corner
+    // Theme toggle button (hidden but exists for theme code compatibility)
     themeToggleButton_ = new QPushButton("🌙 Dark");
     themeToggleButton_->setFixedSize(100, 32);
-    themeToggleButton_->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #f0f0f0; "
-        "  border: 1px solid #ccc; "
-        "  border-radius: 16px; "
-        "  font-weight: bold; "
-        "  padding: 5px 15px; "
-        "}"
-        "QPushButton:hover { background-color: #e0e0e0; }"
-    );
+    themeToggleButton_->hide(); // Hidden from UI
     statusBar()->addPermanentWidget(themeToggleButton_);
     connect(themeToggleButton_, &QPushButton::clicked, this, [this]() {
         isDarkTheme_ = !isDarkTheme_;
         applyTheme();
     });
-    
-    // Menu: History -> Load Previous
-    QMenu* historyMenu = menuBar()->addMenu("History");
-    QAction* loadHistory = new QAction("Load Previous Reddit Session", this);
-    historyMenu->addAction(loadHistory);
-    connect(loadHistory, &QAction::triggered, this, &MainWindow::onLoadHistory);
 
     // Railguard overlay
     railguardOverlay_ = new RailguardOverlay(this);
     railguardOverlay_->hide();
     
-    // Apply initial theme (light)
+    // Apply initial theme (always light)
+    isDarkTheme_ = false;
     applyTheme();
 }
 
 void MainWindow::setupRedditScraperTab() {
     redditScraperTab_ = new QWidget;
     QVBoxLayout* mainLayout = new QVBoxLayout(redditScraperTab_);
-    mainLayout->setContentsMargins(20, 20, 20, 20);
-    mainLayout->setSpacing(16);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(12);
     
     // Create horizontal splitter
     QSplitter* splitter = new QSplitter(Qt::Horizontal);
@@ -261,31 +256,44 @@ void MainWindow::setupRedditScraperTab() {
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(16);
     
-    // Control Card - Contains scraper controls
+    // Header with title and description
+    QWidget* headerWidget = new QWidget;
+    QHBoxLayout* headerLayout = new QHBoxLayout(headerWidget);
+    headerLayout->setContentsMargins(8, 8, 8, 16);
+    headerLayout->setSpacing(12);
+    
+    QLabel* headerLabel = new QLabel("Reddit Analysis");
+    QFont headerFont = headerLabel->font();
+    headerFont.setPointSize(20);
+    headerFont.setBold(true);
+    headerLabel->setFont(headerFont);
+    headerLabel->setStyleSheet("color: #2c3e50;");
+    headerLayout->addWidget(headerLabel);
+    
+    QLabel* descLabel = new QLabel("Scrape and moderate Reddit content with automated analysis");
+    QFont descFont = descLabel->font();
+    descFont.setPointSize(12);
+    descLabel->setFont(descFont);
+    descLabel->setStyleSheet("color: #6c757d;");
+    descLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    headerLayout->addWidget(descLabel);
+    
+    headerLayout->addStretch();
+    leftLayout->addWidget(headerWidget);
+    
+    // Control Frame - Contains scraper controls
     QFrame* controlCard = new QFrame;
     controlCard->setObjectName("controlCard");
     controlCard->setStyleSheet(
         "QFrame#controlCard { "
-        "  background-color: white; "
-        "  border-radius: 12px; "
-        "  border: 1px solid #e0e0e0; "
-        "  padding: 20px; "
+        "  background-color: #f8f9fa; "
+        "  border-radius: 8px; "
+        "  border: 1px solid #dee2e6; "
+        "  padding: 12px; "
         "}"
     );
     QVBoxLayout* controlLayout = new QVBoxLayout(controlCard);
     controlLayout->setSpacing(12);
-    
-    // Title
-    QLabel* controlTitle = new QLabel("Reddit Content Scraper");
-    controlTitle->setStyleSheet(
-        "QLabel { "
-        "  font-size: 18px; "
-        "  font-weight: bold; "
-        "  color: #1a1a1a; "
-        "  margin-bottom: 8px; "
-        "}"
-    );
-    controlLayout->addWidget(controlTitle);
     
     // Subreddit Input Row
     QHBoxLayout* subredditLayout = new QHBoxLayout;
@@ -294,10 +302,12 @@ void MainWindow::setupRedditScraperTab() {
     QLabel* subredditLabel = new QLabel("Subreddit:");
     subredditLabel->setStyleSheet(
         "QLabel { "
-        "  font-size: 14px; "
-        "  font-weight: 600; "
-        "  color: #555; "
-        "  min-width: 80px; "
+        "  font-size: 16pt; "
+        "  font-weight: bold; "
+        "  color: #2c3e50; "
+        "  border: none; "
+        "  background: transparent; "
+        "  min-width: 100px; "
         "}"
     );
     
@@ -334,7 +344,7 @@ void MainWindow::setupRedditScraperTab() {
         "  color: white; "
         "  border: none; "
         "  border-radius: 8px; "
-        "  font-size: 14px; "
+        "  font-size: 16px; "
         "  font-weight: 600; "
         "  min-width: 150px; "
         "}"
@@ -620,7 +630,7 @@ void MainWindow::setupRedditScraperTab() {
     mainLayout->addWidget(splitter);
     
     // Add tab
-    tabWidget_->addTab(redditScraperTab_, "📱 Reddit Scraper & Moderator");
+    tabWidget_->addTab(redditScraperTab_, "Reddit Analysis");
 }
 
 void MainWindow::setupChatbotTab() {
@@ -978,21 +988,31 @@ void MainWindow::applyTheme() {
         "  color: %2; "
         "}"
         "QTabWidget::pane { "
-        "  border: 1px solid %3; "
+        "  border: none; "
+        "  border-top: 1px solid #e0e0e0; "
         "  background-color: %1; "
         "}"
         "QTabBar::tab { "
-        "  background-color: %4; "
-        "  color: %2; "
-        "  border: 1px solid %3; "
-        "  padding: 8px 20px; "
-        "  margin-right: 2px; "
-        "  border-top-left-radius: 4px; "
-        "  border-top-right-radius: 4px; "
+        "  background-color: transparent; "
+        "  color: #7f8c8d; "
+        "  border: none; "
+        "  border-bottom: 3px solid transparent; "
+        "  padding: 14px 28px; "
+        "  margin-right: 8px; "
+        "  margin-bottom: 0px; "
+        "  font-size: 15px; "
+        "  font-weight: 600; "
+        "}"
+        "QTabBar::tab:hover { "
+        "  color: #4a90e2; "
+        "  background-color: rgba(74, 144, 226, 0.08); "
+        "  border-bottom: 3px solid rgba(74, 144, 226, 0.4); "
         "}"
         "QTabBar::tab:selected { "
-        "  background-color: %5; "
-        "  color: white; "
+        "  background-color: transparent; "
+        "  color: #2c3e50; "
+        "  border-bottom: 3px solid #4a90e2; "
+        "  font-weight: 700; "
         "}"
         "QTableView { "
         "  color: %2; "
@@ -1065,8 +1085,14 @@ void MainWindow::applyTheme() {
         "  background-color: %5; "
         "}"
         "QStatusBar { "
-        "  background-color: %4; "
-        "  color: %2; "
+        "  background-color: #f8f9fa; "
+        "  border-top: 1px solid #e0e0e0; "
+        "  color: #6c757d; "
+        "  padding: 4px; "
+        "}"
+        "QMenuBar { "
+        "  background-color: transparent; "
+        "  border: none; "
         "}"
     ).arg(bgColor, fgColor, borderColor, tabBg, tabSelectedBg, buttonBg, buttonHover);
     

@@ -87,7 +87,7 @@ void AIImageDetectorPanel::setupUI() {
     
     auto* descLabel = new QLabel("Detect AI-generated images and check metadata for source information");
     QFont descFont = descLabel->font();
-    descFont.setPointSize(10);
+    descFont.setPointSize(12);
     descLabel->setFont(descFont);
     descLabel->setStyleSheet("color: #6c757d;");
     descLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);

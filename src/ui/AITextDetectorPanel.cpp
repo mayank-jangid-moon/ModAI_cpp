@@ -59,7 +59,7 @@ void AITextDetectorPanel::setupUI() {
     
     auto* descLabel = new QLabel("Analyze text to detect AI-generated content using machine learning");
     QFont descFont = descLabel->font();
-    descFont.setPointSize(10);
+    descFont.setPointSize(12);
     descLabel->setFont(descFont);
     descLabel->setStyleSheet("color: #6c757d;");
     descLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
