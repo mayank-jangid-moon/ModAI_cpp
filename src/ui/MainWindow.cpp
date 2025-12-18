@@ -559,6 +559,41 @@ void MainWindow::setupRedditScraperTab() {
         "  font-size: 13px; "
         "  color: #555; "
         "}"
+        "QScrollBar:horizontal { "
+        "  background: transparent; "
+        "  height: 8px; "
+        "  margin: 0px 2px 4px 2px; "
+        "}"
+        "QScrollBar::handle:horizontal { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-width: 30px; "
+        "}"
+        "QScrollBar::handle:horizontal:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 4px 2px 4px 0px; "
+        "}"
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-height: 30px; "
+        "}"
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal, "
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+        "  height: 0px; "
+        "  width: 0px; "
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal, "
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: none; "
+        "}"
     );
     
     model_ = new DashboardModel(this);
@@ -641,11 +676,11 @@ void MainWindow::setupChatbotTab() {
 void MainWindow::setupAIDetectorTabs() {
     // AI Text Detector
     aiTextDetectorPanel_ = new AITextDetectorPanel(this);
-    tabWidget_->addTab(aiTextDetectorPanel_, "AI Text Detector");
+    tabWidget_->addTab(aiTextDetectorPanel_, "Text Fingerprinting");
     
     // AI Image Detector  
     aiImageDetectorPanel_ = new AIImageDetectorPanel(this);
-    tabWidget_->addTab(aiImageDetectorPanel_, "AI Image Detector");
+    tabWidget_->addTab(aiImageDetectorPanel_, "Image Fingerprinting");
 }
 
 void MainWindow::setupConnections() {
@@ -1022,6 +1057,41 @@ void MainWindow::applyTheme() {
         "QTableView::item:selected { "
         "  background-color: %5; "
         "  color: white; "
+        "}"
+        "QScrollBar:horizontal { "
+        "  background: transparent; "
+        "  height: 8px; "
+        "  margin: 0px 2px 4px 2px; "
+        "}"
+        "QScrollBar::handle:horizontal { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-width: 30px; "
+        "}"
+        "QScrollBar::handle:horizontal:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 4px 2px 4px 0px; "
+        "}"
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-height: 30px; "
+        "}"
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal, "
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+        "  height: 0px; "
+        "  width: 0px; "
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal, "
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: none; "
         "}"
         "QHeaderView::section { "
         "  background-color: %4; "

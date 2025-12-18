@@ -77,7 +77,7 @@ void AIImageDetectorPanel::setupUI() {
     headerLayout->setContentsMargins(8, 8, 8, 16);
     headerLayout->setSpacing(12);
     
-    auto* headerLabel = new QLabel("AI Image Detector");
+    auto* headerLabel = new QLabel("Image Fingerprinting");
     QFont headerFont = headerLabel->font();
     headerFont.setPointSize(20);
     headerFont.setBold(true);
@@ -85,7 +85,7 @@ void AIImageDetectorPanel::setupUI() {
     headerLabel->setStyleSheet("color: #2c3e50;");
     headerLayout->addWidget(headerLabel);
     
-    auto* descLabel = new QLabel("Detect AI-generated images and check metadata for source information");
+    auto* descLabel = new QLabel("Detect AI-generated images and their source models");
     QFont descFont = descLabel->font();
     descFont.setPointSize(12);
     descLabel->setFont(descFont);

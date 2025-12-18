@@ -53,7 +53,7 @@ void ChatbotPanel::initialize(std::unique_ptr<HttpClient> httpClient,
     // Always use the free GPT API endpoint
     llmEndpoint_ = "https://freeapi-v27x.onrender.com/v1/chat/completions";
     
-    statusLabel_->setText("GPT-4o API configured with Hive railguard");
+    statusLabel_->setText("LLM configured with Moderation railguard");
 }
 
 void ChatbotPanel::setImageModerator(std::shared_ptr<ImageModerator> imageModerator) {
@@ -82,7 +82,7 @@ void ChatbotPanel::setupUI() {
     headerLabel->setStyleSheet("color: #2c3e50;");
     headerLayout->addWidget(headerLabel);
     
-    auto* descLabel = new QLabel("Chat with AI models with automated content moderation using Hive API");
+    auto* descLabel = new QLabel("Chat with AI models with automated content moderation");
     QFont descFont = descLabel->font();
     descFont.setPointSize(12);
     descLabel->setFont(descFont);
@@ -120,6 +120,25 @@ void ChatbotPanel::setupUI() {
         "  background-color: #f8f9fa; "
         "  border: none; "
         "  border-radius: 8px; "
+        "}"
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 4px 2px 4px 0px; "
+        "}"
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-height: 30px; "
+        "}"
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+        "  height: 0px; "
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: none; "
         "}"
     );
     chatFrameLayout->addWidget(chatScrollArea_);
@@ -357,7 +376,7 @@ QWidget* ChatbotPanel::createMessageBubble(const QString& message, bool isUser, 
         // User bubble - right aligned, blue gradient
         containerLayout->addStretch();
         containerLayout->addWidget(bubble);
-        bubble->setMaximumWidth(700);
+        bubble->setMaximumWidth(900);
         bubble->setStyleSheet(
             "QFrame { "
             "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
@@ -373,7 +392,7 @@ QWidget* ChatbotPanel::createMessageBubble(const QString& message, bool isUser, 
         // Assistant bubble - left aligned, gray or red if blocked
         containerLayout->addWidget(bubble);
         containerLayout->addStretch();
-        bubble->setMaximumWidth(700);
+        bubble->setMaximumWidth(900);
         
         if (blocked) {
             bubble->setStyleSheet(
@@ -895,7 +914,7 @@ void ChatbotPanel::addBlockedImageToChat(const QString& prompt, const QString& r
     containerLayout->setContentsMargins(10, 5, 10, 5);
     
     auto* bubble = new QFrame(bubbleContainer);
-    bubble->setMaximumWidth(420);
+    bubble->setMaximumWidth(600);
     
     auto* bubbleLayout = new QVBoxLayout(bubble);
     bubbleLayout->setContentsMargins(12, 10, 12, 10);
@@ -903,6 +922,7 @@ void ChatbotPanel::addBlockedImageToChat(const QString& prompt, const QString& r
     
     // Blocked icon and message
     auto* blockedLabel = new QLabel("[Image Blocked by Hive Moderation]", bubble);
+    blockedLabel->setWordWrap(true);
     blockedLabel->setAlignment(Qt::AlignCenter);
     blockedLabel->setStyleSheet(
         "QLabel { "
@@ -969,7 +989,7 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
     containerLayout->setContentsMargins(10, 5, 10, 5);
     
     auto* bubble = new QFrame(bubbleContainer);
-    bubble->setMaximumWidth(420);
+    bubble->setMaximumWidth(600);
     
     auto* bubbleLayout = new QVBoxLayout(bubble);
     bubbleLayout->setContentsMargins(12, 10, 12, 10);
@@ -1084,6 +1104,8 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
             if (!passedModeration) {
                 // Image blocked - update bubble to show blocked state with "Show Anyway" option
                 imageLabel->setText("[Image blocked by Hive moderation]\n\nThe generated image was flagged for potentially inappropriate content.");
+                imageLabel->setWordWrap(true);
+                imageLabel->setAlignment(Qt::AlignCenter);
                 imageLabel->setStyleSheet(
                     "QLabel { "
                     "  background-color: #ffebee; "
@@ -1091,6 +1113,7 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
                     "  padding: 20px; "
                     "  color: #c62828; "
                     "  font-weight: bold; "
+                    "  font-size: 11pt; "
                     "}"
                 );
                 bubble->setStyleSheet(
@@ -1098,7 +1121,7 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
                     "  background-color: #ffebee; "
                     "  color: #c62828; "
                     "  border-radius: 18px; "
-                    "  border: 1px solid #ef9a9a; "
+                    "  border: none; "
                     "}"
                 );
                 
@@ -1201,6 +1224,8 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
                     // Restore blocked state
                     imageLabel->clear();
                     imageLabel->setText("[Image blocked by Hive moderation]\n\nThe generated image was flagged for potentially inappropriate content.");
+                    imageLabel->setWordWrap(true);
+                    imageLabel->setAlignment(Qt::AlignCenter);
                     imageLabel->setStyleSheet(
                         "QLabel { "
                         "  background-color: #ffebee; "
@@ -1208,6 +1233,7 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
                         "  padding: 20px; "
                         "  color: #c62828; "
                         "  font-weight: bold; "
+                        "  font-size: 11pt; "
                         "}"
                     );
                     bubble->setStyleSheet(
@@ -1215,7 +1241,7 @@ void ChatbotPanel::addImageToChat(const QString& imageUrl, const QString& prompt
                         "  background-color: #ffebee; "
                         "  color: #c62828; "
                         "  border-radius: 18px; "
-                        "  border: 1px solid #ef9a9a; "
+                        "  border: none; "
                         "}"
                     );
                     
@@ -1422,6 +1448,25 @@ void ChatbotPanel::setTheme(bool isDark) {
             "  border: 1px solid #333; "
             "  border-radius: 8px; "
             "}"
+            "QScrollBar:vertical { "
+            "  background: transparent; "
+            "  width: 8px; "
+            "  margin: 4px 2px 4px 0px; "
+            "}"
+            "QScrollBar::handle:vertical { "
+            "  background: rgba(255, 255, 255, 0.2); "
+            "  border-radius: 4px; "
+            "  min-height: 30px; "
+            "}"
+            "QScrollBar::handle:vertical:hover { "
+            "  background: rgba(255, 255, 255, 0.35); "
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+            "  height: 0px; "
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+            "  background: none; "
+            "}"
         );
         
         chatContainer_->setStyleSheet(
@@ -1465,6 +1510,25 @@ void ChatbotPanel::setTheme(bool isDark) {
             "  background-color: #f5f5f5; "
             "  border: 1px solid #ddd; "
             "  border-radius: 8px; "
+            "}"
+            "QScrollBar:vertical { "
+            "  background: transparent; "
+            "  width: 8px; "
+            "  margin: 4px 2px 4px 0px; "
+            "}"
+            "QScrollBar::handle:vertical { "
+            "  background: rgba(0, 0, 0, 0.2); "
+            "  border-radius: 4px; "
+            "  min-height: 30px; "
+            "}"
+            "QScrollBar::handle:vertical:hover { "
+            "  background: rgba(0, 0, 0, 0.35); "
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+            "  height: 0px; "
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+            "  background: none; "
             "}"
         );
         

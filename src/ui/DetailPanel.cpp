@@ -16,6 +16,27 @@ DetailPanel::DetailPanel(QWidget* parent)
     
     contentText_ = new QTextEdit;
     contentText_->setReadOnly(true);
+    contentText_->setStyleSheet(
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 4px 2px 4px 0px; "
+        "}"
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-height: 30px; "
+        "}"
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+        "  height: 0px; "
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: none; "
+        "}"
+    );
     layout->addWidget(contentText_);
     
     imageLabel_ = new QLabel;

@@ -49,7 +49,7 @@ void AITextDetectorPanel::setupUI() {
     headerLayout->setContentsMargins(8, 8, 8, 16);
     headerLayout->setSpacing(12);
     
-    auto* headerLabel = new QLabel("AI Text Detector");
+    auto* headerLabel = new QLabel("Text Fingerprinting");
     QFont headerFont = headerLabel->font();
     headerFont.setPointSize(20);
     headerFont.setBold(true);
@@ -57,7 +57,7 @@ void AITextDetectorPanel::setupUI() {
     headerLabel->setStyleSheet("color: #2c3e50;");
     headerLayout->addWidget(headerLabel);
     
-    auto* descLabel = new QLabel("Analyze text to detect AI-generated content using machine learning");
+    auto* descLabel = new QLabel("Analyze text to detect AI-generated content and it's source model");
     QFont descFont = descLabel->font();
     descFont.setPointSize(12);
     descLabel->setFont(descFont);
@@ -100,6 +100,25 @@ void AITextDetectorPanel::setupUI() {
         "}"
         "QTextEdit:focus { "
         "  border-color: #4a90e2; "
+        "}"
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 4px 2px 4px 0px; "
+        "}"
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(0, 0, 0, 0.2); "
+        "  border-radius: 4px; "
+        "  min-height: 30px; "
+        "}"
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(0, 0, 0, 0.35); "
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+        "  height: 0px; "
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: none; "
         "}"
     );
     inputLayout->addWidget(textInput_, 1);
@@ -420,6 +439,25 @@ void AITextDetectorPanel::setTheme(bool isDark) {
             "QTextEdit:focus { "
             "  border-color: #4a90e2; "
             "}"
+            "QScrollBar:vertical { "
+            "  background: transparent; "
+            "  width: 8px; "
+            "  margin: 4px 2px 4px 0px; "
+            "}"
+            "QScrollBar::handle:vertical { "
+            "  background: rgba(255, 255, 255, 0.2); "
+            "  border-radius: 4px; "
+            "  min-height: 30px; "
+            "}"
+            "QScrollBar::handle:vertical:hover { "
+            "  background: rgba(255, 255, 255, 0.35); "
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+            "  height: 0px; "
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+            "  background: none; "
+            "}"
         );
         
         analyzeButton_->setStyleSheet(
@@ -457,6 +495,25 @@ void AITextDetectorPanel::setTheme(bool isDark) {
             "}"
             "QTextEdit:focus { "
             "  border-color: #4a90e2; "
+            "}"
+            "QScrollBar:vertical { "
+            "  background: transparent; "
+            "  width: 8px; "
+            "  margin: 4px 2px 4px 0px; "
+            "}"
+            "QScrollBar::handle:vertical { "
+            "  background: rgba(0, 0, 0, 0.2); "
+            "  border-radius: 4px; "
+            "  min-height: 30px; "
+            "}"
+            "QScrollBar::handle:vertical:hover { "
+            "  background: rgba(0, 0, 0, 0.35); "
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+            "  height: 0px; "
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+            "  background: none; "
             "}"
         );
         
