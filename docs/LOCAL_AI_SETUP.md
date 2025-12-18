@@ -5,10 +5,10 @@ This guide explains how to set up local AI text detection using the desklib/ai-t
 ## Overview
 
 The application now supports **local inference** using ONNX Runtime, which means:
-- ✅ No API calls or internet required for AI detection
-- ✅ Faster inference (runs on your CPU/GPU)
-- ✅ No API rate limits or costs
-- ✅ Privacy - data stays on your machine
+- No API calls or internet required for AI detection
+- Faster inference (runs on your CPU/GPU)
+- No API rate limits or costs
+- Privacy - data stays on your machine
 
 ## Prerequisites
 
@@ -135,7 +135,7 @@ Expected files:
 ```
 
 Check the status bar at the bottom of the window:
-- ✅ "**✓ Local AI detection enabled**" - Local ONNX model is working
+- "**✓ Local AI detection enabled**" - Local ONNX model is working
 - ⚠ "**Using HuggingFace API for AI detection**" - Falling back to API (model not found)
 - ⚠ "**AI detection disabled**" - No local model and no API key
 
@@ -250,11 +250,11 @@ auto localDetector = std::make_unique<LocalAIDetector>(
 
 | Feature | Local ONNX | HuggingFace API |
 |---------|------------|-----------------|
-| Speed | ⚡ Fast (100-200ms) | 🐌 Slow (1-3s) |
-| Privacy | ✅ Fully private | ⚠ Sends to cloud |
-| Cost | 💰 Free | 💸 Rate limits |
-| Internet | ❌ Not required | ✅ Required |
-| Setup | 🔧 One-time setup | ✅ Just API key |
+| Speed | Fast (100-200ms) | Slow (1-3s) |
+| Privacy | Fully private | Sends to cloud |
+| Cost | Free | Rate limits |
+| Internet | Not required | Required |
+| Setup | One-time setup | Just API key |
 
 ## References
 
