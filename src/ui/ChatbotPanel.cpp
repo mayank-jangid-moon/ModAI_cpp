@@ -84,7 +84,7 @@ void ChatbotPanel::setupUI() {
     
     auto* headerLabel = new QLabel("AI Chatbot with Railguard");
     QFont headerFont = headerLabel->font();
-    headerFont.setPointSize(16);
+    headerFont.setPointSize(20);
     headerFont.setBold(true);
     headerLabel->setFont(headerFont);
     headerLabel->setStyleSheet("color: #2c3e50;");
@@ -92,7 +92,7 @@ void ChatbotPanel::setupUI() {
     
     auto* infoLabel = new QLabel("Chat with an AI assistant. All responses are moderated by Hive API for safety.");
     infoLabel->setWordWrap(true);
-    infoLabel->setStyleSheet("color: #7f8c8d; font-size: 13px;");
+    infoLabel->setStyleSheet("color: #7f8c8d; font-size: 16px;");
     headerLayout->addWidget(infoLabel);
     
     layout->addWidget(headerCard);
@@ -149,13 +149,13 @@ void ChatbotPanel::setupUI() {
     
     messageInput_ = new QLineEdit;
     messageInput_->setPlaceholderText("Type your message here...");
-    messageInput_->setMinimumHeight(45);
+    messageInput_->setMinimumHeight(50);
     messageInput_->setStyleSheet(
         "QLineEdit { "
         "  border: 2px solid #e0e0e0; "
         "  border-radius: 8px; "
-        "  padding: 10px 16px; "
-        "  font-size: 14px; "
+        "  padding: 12px 18px; "
+        "  font-size: 18px; "
         "  background-color: #fafafa; "
         "}"
         "QLineEdit:focus { "
@@ -201,7 +201,7 @@ void ChatbotPanel::setupUI() {
     modelLayout->setSpacing(12);
     
     auto* modelLabel = new QLabel("AI Model:");
-    modelLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 14px;");
+    modelLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 18px;");
     
     modelSelector_ = new QComboBox;
     modelSelector_->addItem("GPT-4o Mini (Fast, Vision)", "provider-5/gpt-4o-mini");
@@ -216,11 +216,11 @@ void ChatbotPanel::setupUI() {
     modelSelector_->setMinimumWidth(300);
     modelSelector_->setStyleSheet(
         "QComboBox { "
-        "  padding: 8px 32px 8px 12px; "
+        "  padding: 10px 32px 10px 14px; "
         "  border: 2px solid #e0e0e0; "
         "  border-radius: 8px; "
         "  background-color: #fafafa; "
-        "  font-size: 13px; "
+        "  font-size: 16px; "
         "}"
         "QComboBox:focus { "
         "  border-color: #4a90e2; "

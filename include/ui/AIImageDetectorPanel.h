@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QPixmap>
 #include <QTimer>
+#include <QResizeEvent>
 #include <memory>
 #include "detectors/ImageModerator.h"
 
@@ -55,6 +56,10 @@ private:
     void updateResults(float aiScore, const std::string& details, const QString& source = QString());
     void displayImage(const QString& path);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
+private:
     QLabel* imageDisplay_;
     QPushButton* selectButton_;
     QPushButton* analyzeButton_;
@@ -69,6 +74,7 @@ private:
 
     std::shared_ptr<ImageModerator> imageModerator_;
     QString currentImagePath_;
+    QPixmap originalPixmap_;  // Store original for resizing
 };
 
 } // namespace ModAI
