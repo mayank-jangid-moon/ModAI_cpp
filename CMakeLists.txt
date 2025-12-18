@@ -50,7 +50,6 @@ set(HEADERS
     include/core/ModerationEngine.h
     include/core/RuleEngine.h
     include/core/ContentItem.h
-    include/core/ResultCache.h
     include/network/HttpClient.h
     include/network/QtHttpClient.h
     include/network/RateLimiter.h
@@ -82,7 +81,6 @@ set(SOURCES
     src/main.cpp
     src/core/ModerationEngine.cpp
     src/core/RuleEngine.cpp
-    src/core/ResultCache.cpp
     src/core/ContentItem.cpp
     src/network/QtHttpClient.cpp
     src/network/RateLimiter.cpp

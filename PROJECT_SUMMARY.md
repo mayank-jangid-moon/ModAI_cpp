@@ -18,7 +18,7 @@ This is a complete implementation of the Trust & Safety Dashboard as specified i
    - Thread-safe writes with mutex protection
    - Crash-safe file operations
    - Support for ContentItem and HumanAction storage
-   - Directory structure: data/content.jsonl, data/actions.jsonl, data/cache/, data/logs/, data/exports/
+   - Directory structure: data/content.jsonl, data/actions.jsonl, data/logs/, data/exports/
 
 3. **Network Layer**
    - `QtHttpClient` using QtNetwork (QNetworkAccessManager)
@@ -26,15 +26,14 @@ This is a complete implementation of the Trust & Safety Dashboard as specified i
    - Structured retry logic with exponential backoff for robust error handling
    - Support for JSON and multipart/form-data requests
 
-4. **Detectors & Caching**
+4. **Detectors**
    - `HFTextDetector`: Hugging Face AI text detection (desklib/ai-text-detector-v1.01)
    - `HiveImageModerator`: Hive visual moderation API
    - `HiveTextModerator`: Hive text moderation API
-   - `ResultCache`: Caches detection results by content hash to reduce API costs and latency
    - All implement abstract interfaces for testability
 
 5. **Core Logic**
-   - `ModerationEngine`: Orchestrates detection pipeline, including image downloading and caching
+   - `ModerationEngine`: Orchestrates detection pipeline, including image downloading
    - `RuleEngine`: JSON-based rule evaluation with condition parsing
    - `ContentItem`: Data model with JSON serialization
    - Support for AND/OR conditions, thresholds, per-subreddit rules
@@ -55,10 +54,13 @@ This is a complete implementation of the Trust & Safety Dashboard as specified i
    - `RailguardOverlay`: Animated overlay for auto-blocked content
    - `ReviewDialog`: Dialog for human review workflow
 
-8. **Export Functionality**
+8. **Export/Import Functionality**
    - PDF export using `QPdfWriter` with rich layout and image support
    - CSV export with all fields
    - JSON export with full item data
+   - CSV import with automatic field mapping
+   - JSON import from array format
+   - Option to clear or append on import
 
 9. **Utilities**
    - `Logger`: File and console logging with rotation
@@ -183,14 +185,12 @@ ModAI_cpp/
 ## Future Enhancements
 
 1. **Enhanced PDF Export**: Use QPrinter for proper PDF generation
-2. **Image Download**: Download and cache images from URLs
-3. **Settings UI**: GUI for configuring API keys and rules
-4. **Charts**: Add Qt Charts for statistics visualization
-5. **Search/Filter**: Advanced filtering in dashboard table
-6. **Batch Operations**: Bulk actions on multiple items
-7. **Webhook Integration**: Send escalations to external systems
-8. **Encryption**: Proper AES encryption for API keys
-9. **Database Migration**: Tool to migrate from JSONL to SQLite if needed
+2. **Settings UI**: GUI for configuring API keys and rules
+3. **Charts**: Add Qt Charts for statistics visualization
+4. **Search/Filter**: Advanced filtering in dashboard table
+5. **Batch Operations**: Bulk actions on multiple items
+6. **Webhook Integration**: Send escalations to external systems
+7. **Encryption**: Proper AES encryption for API keys
 
 ## Compliance & Security
 

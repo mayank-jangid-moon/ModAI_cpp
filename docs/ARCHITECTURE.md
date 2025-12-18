@@ -42,8 +42,7 @@ ModAI provides a unified platform for:
 - Local ONNX-based AI content detection
 - Cloud-based moderation via Hive API
 - Reddit content scraping and analysis
-- Export functionality for moderation results
-- Cache management for performance optimization
+- Export/Import functionality for moderation results
 - Rule-based content filtering
 
 ### 1.3 Technology Stack
@@ -64,7 +63,6 @@ ModAI provides a unified platform for:
 ├─────────────────────────────────────┤
 │         Data Layer                  │
 │   - JSONL Storage                   │
-│   - Result Cache (SQLite)           │
 │   - File System                     │
 └─────────────────────────────────────┘
 ```
@@ -170,12 +168,6 @@ struct ContentItem {
     std::chrono::system_clock::time_point timestamp;
 };
 ```
-
-**ResultCache** (`ResultCache.h/cpp`)
-- SQLite-based caching system
-- Reduces redundant API calls
-- TTL-based expiration
-- Query optimization
 
 ### 2.3 Service Layer
 
@@ -284,13 +276,19 @@ private:
 - Efficient append operations
 - Line-by-line reading
 
-#### Export Services (`include/export/`, `src/export/`)
+#### Export/Import Services (`include/export/`, `src/export/`, `src/ui/MainWindow.cpp`)
 
 **Exporter** (`Exporter.h/cpp`)
 - Multiple format support (CSV, JSON, JSONL)
 - Filtered exports
 - Batch processing
 - Progress reporting
+
+**Import** (`MainWindow::onImportData`)
+- CSV import with automatic field mapping
+- JSON array import
+- Option to clear or append to existing data
+- Validation and error handling
 
 ---
 
@@ -304,7 +302,6 @@ ModAI_cpp/
 │   ├── core/            # Core business logic
 │   │   ├── ContentItem.h
 │   │   ├── ModerationEngine.h
-│   │   ├── ResultCache.h
 │   │   └── RuleEngine.h
 │   ├── detectors/       # AI detection modules
 │   │   ├── HiveImageModerator.h
@@ -375,12 +372,12 @@ ModAI_cpp/
 │         │           │          │
 └────┬────┘           └──────────┘
      │
-     ├──────────┬──────────┐
-     ↓          ↓          ↓
-┌─────────┐ ┌──────┐ ┌─────────┐
-│  Hive   │ │Local │ │  Cache  │
-│   API   │ │  AI  │ │         │
-└────┬────┘ └───┬──┘ └─────────┘
+     ├──────────┐
+     ↓          ↓
+┌─────────┐ ┌──────┐
+│  Hive   │ │Local │
+│   API   │ │  AI  │
+└────┬────┘ └───┬──┘
      │          │
      └──────┬───┘
             ↓
@@ -678,8 +675,7 @@ ModerationEngine (class)
   ├── Dependencies:
   │   ├── TextDetector* (interface)
   │   ├── ImageModerator* (interface)
-  │   ├── RuleEngine
-  │   └── ResultCache
+  │   └── RuleEngine
   ├── Methods:
   │   ├── moderateText(string) → ModerationResult
   │   ├── moderateImage(vector<uint8_t>) → ModerationResult
@@ -697,20 +693,6 @@ RuleEngine (class)
       ├── pattern (regex)
       ├── action (BLOCK/FLAG/ALLOW)
       └── priority (int)
-
-ResultCache (class)
-  ├── Backend: SQLite
-  ├── Methods:
-  │   ├── get(string contentHash) → optional<ModerationResult>
-  │   ├── store(string contentHash, ModerationResult)
-  │   ├── clear()
-  │   └── cleanup() → Remove expired entries
-  └── Schema:
-      ├── hash (PRIMARY KEY)
-      ├── result (JSON blob)
-      ├── timestamp
-      └── ttl
-```
 
 ### 5.2 Detector Classes
 
@@ -830,7 +812,7 @@ QMainWindow
       │   ├── AIImageDetectorPanel*
       │   └── Dashboard Tab (QTableView)
       ├── Menu System:
-      │   ├── File: Export, Clear Cache, Exit
+      │   ├── File: Export, Exit
       │   ├── View: Refresh, Filters
       │   └── Help: About
       └── Status Bar
@@ -948,15 +930,13 @@ main()
   │     ├──→ HiveTextModerator
   │     ├──→ HiveImageModerator
   │     ├──→ RuleEngine
-  │     ├──→ ResultCache (SQLite)
   │     └──→ JsonlStorage
   │
   ├──→ Create ModerationEngine
   │     │
   │     ├──→ Inject TextDetector
   │     ├──→ Inject ImageModerator
-  │     ├──→ Inject RuleEngine
-  │     └──→ Inject ResultCache
+  │     └──→ Inject RuleEngine
   │
   ├──→ Create MainWindow
   │     │
@@ -1103,8 +1083,6 @@ User Clicks "Scrape" in Dashboard
                     │     └──→ status = PENDING
                     │
                     ├──→ ModerationEngine::moderateContent(item)
-                    │     │
-                    │     ├──→ Check ResultCache
                     │     │
                     │     ├──→ If text: LocalAIDetector + HiveTextModerator
                     │     │
@@ -1273,8 +1251,6 @@ User Clicks "Scrape" in Dashboard
 ├── data/
 │   ├── models/
 │   │   └── ai_detector.onnx          # Local AI model
-│   ├── cache/
-│   │   └── result_cache.db           # SQLite cache
 │   ├── logs/
 │   │   └── modai_YYYY-MM-DD.log      # Daily logs
 │   └── storage/
@@ -1287,22 +1263,7 @@ User Clicks "Scrape" in Dashboard
     └── export_YYYYMMDD_HHMMSS.jsonl
 ```
 
-### 8.2 Database Schema (SQLite Cache)
-
-```sql
-CREATE TABLE result_cache (
-    content_hash TEXT PRIMARY KEY,
-    result_json TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL,
-    hit_count INTEGER DEFAULT 0
-);
-
-CREATE INDEX idx_expires_at ON result_cache(expires_at);
-CREATE INDEX idx_created_at ON result_cache(created_at);
-```
-
-### 8.3 JSONL Storage Format
+### 8.2 JSONL Storage Format
 
 Each line is a complete JSON object:
 
@@ -1355,7 +1316,6 @@ REDDIT_CLIENT_ID=your_reddit_id
 ### 9.2 Data Privacy
 
 - **Local Processing:** Text detection via ONNX (no data sent externally)
-- **Cache:** Local SQLite database (no cloud storage)
 - **Logs:** Local filesystem only
 - **Generated Images:** Watermarked with metadata
 - **User Content:** Never logged or persisted without consent
@@ -1544,7 +1504,6 @@ NEBIUS_API_KEY=<your_nebius_api_key>
 
 # Optional
 MODAI_LOG_LEVEL=DEBUG|INFO|WARN|ERROR  # Default: INFO
-MODAI_CACHE_TTL=3600                    # Cache TTL in seconds
 MODAI_MAX_RETRIES=3                     # Max HTTP retries
 MODAI_TIMEOUT_MS=60000                  # Request timeout
 ONNX_THREADS=4                          # ONNX inference threads
@@ -1561,11 +1520,6 @@ Located in `~/.config/ModAI/config.json`:
     "imageThreshold": 0.5,
     "useLocalAI": true,
     "useHiveAPI": true
-  },
-  "cache": {
-    "enabled": true,
-    "ttlSeconds": 3600,
-    "maxSize": 10000
   },
   "ui": {
     "theme": "light",

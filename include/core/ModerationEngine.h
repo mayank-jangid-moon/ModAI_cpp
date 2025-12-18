@@ -2,7 +2,6 @@
 
 #include "core/ContentItem.h"
 #include "core/RuleEngine.h"
-#include "core/ResultCache.h"
 #include "detectors/TextDetector.h"
 #include "detectors/ImageModerator.h"
 #include "detectors/TextModerator.h"
@@ -19,7 +18,6 @@ private:
     std::unique_ptr<TextModerator> textModerator_;
     std::unique_ptr<RuleEngine> ruleEngine_;
     std::unique_ptr<Storage> storage_;
-    std::unique_ptr<ResultCache> cache_;
     
     std::function<void(const ContentItem&)> onItemProcessed_;
 
@@ -29,8 +27,7 @@ public:
         std::unique_ptr<ImageModerator> imageModerator,
         std::unique_ptr<TextModerator> textModerator,
         std::unique_ptr<RuleEngine> ruleEngine,
-        std::unique_ptr<Storage> storage,
-        std::unique_ptr<ResultCache> cache
+        std::unique_ptr<Storage> storage
     );
     
     void processItem(ContentItem item);

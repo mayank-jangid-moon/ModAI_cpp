@@ -1,7 +1,6 @@
 #include "ui/MainWindow.h"
 #include "core/ModerationEngine.h"
 #include "core/RuleEngine.h"
-#include "core/ResultCache.h"
 #include "detectors/LocalAIDetector.h"
 #include "detectors/HiveImageModerator.h"
 #include "detectors/HiveTextModerator.h"
@@ -126,19 +125,13 @@ MainWindow::MainWindow(QWidget* parent)
     auto storage = std::make_unique<JsonlStorage>(dataPath_);
     storagePtr_ = storage.get();
     
-    // Create cache
-    std::string cachePath = dataPath_ + "/cache/results.jsonl";
-    QDir().mkpath(QString::fromStdString(dataPath_ + "/cache"));
-    auto cache = std::make_unique<ResultCache>(cachePath);
-    
     // Create moderation engine
     moderationEngine_ = std::make_unique<ModerationEngine>(
         std::move(textDetector),
         std::move(imageModerator),
         std::move(textModerator),
         std::move(ruleEngine),
-        std::move(storage),
-        std::move(cache)
+        std::move(storage)
     );
     
     moderationEngine_->setOnItemProcessed([this](const ContentItem& item) {

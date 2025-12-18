@@ -11,8 +11,8 @@ A polished Qt-based desktop application (C++) that scrapes subreddit posts/comme
 - **Railguard**: Real-time blocking with animated overlay notifications
 - **Dashboard**: Sortable table with search, status filters, visual badges, and detail panels
 - **Rule Engine**: JSON-based configurable thresholds and actions
-- **Export**: Rich PDF reports with images, CSV, and JSON export functionality
-- **Performance**: Result caching to minimize API calls and structured retries for network resilience
+- **Export/Import**: CSV and JSON export/import functionality, PDF reports with images
+- **Performance**: Structured retries for network resilience
 - **Secure Storage**: Encrypted API key storage with environment variable support
 
 ## Architecture
@@ -25,7 +25,7 @@ The project follows a modular OOP design:
 - `detectors/` - AI detection and moderation interfaces (LocalAIDetector with ONNX Runtime, HiveImageModerator, HiveTextModerator)
 - `scraper/` - RedditScraper with OAuth and rate limiting
 - `storage/` - JSONL-based append-only storage (thread-safe, crash-safe)
-- `export/` - PDF/CSV/JSON exporters
+- `export/` - PDF/CSV/JSON export and CSV/JSON import
 - `utils/` - Logging, crypto, and helper utilities
 
 ## Quick Start
@@ -177,7 +177,6 @@ The application uses **JSONL (JSON Lines)** format for storage:
 
 - `data/content.jsonl` - All scraped and analyzed content
 - `data/actions.jsonl` - Human moderation actions
-- `data/cache/` - Cached detection results
 - `data/logs/` - System logs
 - `data/exports/` - Exported reports
 
