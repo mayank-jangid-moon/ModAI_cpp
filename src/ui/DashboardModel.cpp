@@ -2,6 +2,7 @@
 #include <QColor>
 #include <QBrush>
 #include <QString>
+#include <QFont>
 
 namespace ModAI {
 
@@ -16,7 +17,7 @@ int DashboardModel::rowCount(const QModelIndex& parent) const {
 
 int DashboardModel::columnCount(const QModelIndex& parent) const {
     Q_UNUSED(parent);
-    return 9;  // timestamp, author, subreddit, snippet, type, ai_score, labels, status, actions
+    return 9;  // timestamp, author, subreddit, snippet, type, ai_score, labels, status, link
 }
 
 QVariant DashboardModel::data(const QModelIndex& index, int role) const {
@@ -58,7 +59,13 @@ QVariant DashboardModel::data(const QModelIndex& index, int role) const {
                 return labels.isEmpty() ? QString("none") : labels.trimmed();
             }
             case 7: return QString::fromStdString(item.decision.auto_action);
-            case 8: return QString("View");
+            case 8: {
+                // Construct Reddit post URL
+                QString url = QString("https://reddit.com/r/%1/comments/%2")
+                    .arg(QString::fromStdString(item.subreddit))
+                    .arg(QString::fromStdString(item.id));
+                return url;
+            }
             default: return QVariant();
         }
     }
@@ -123,8 +130,21 @@ QVariant DashboardModel::data(const QModelIndex& index, int role) const {
     }
     
     if (role == Qt::ForegroundRole) {
+        // Make link column blue to indicate clickable
+        if (index.column() == 8) {
+            return QColor(0, 102, 204);  // Blue for links
+        }
         // Ensure text is always readable (black text)
         return QColor(Qt::black);
+    }
+    
+    if (role == Qt::FontRole) {
+        // Make link column underlined to indicate clickable
+        if (index.column() == 8) {
+            QFont font;
+            font.setUnderline(true);
+            return font;
+        }
     }
     
     return QVariant();
@@ -141,7 +161,7 @@ QVariant DashboardModel::headerData(int section, Qt::Orientation orientation, in
             case 5: return "AI Score";
             case 6: return "Labels";
             case 7: return "Status";
-            case 8: return "Actions";
+            case 8: return "Link";
             default: return QVariant();
         }
     }

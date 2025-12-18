@@ -31,6 +31,8 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QTextStream>
+#include <QDesktopServices>
+#include <QUrl>
 
 namespace ModAI {
 
@@ -567,6 +569,18 @@ void MainWindow::setupRedditScraperTab() {
     tableView_->setSelectionBehavior(QAbstractItemView::SelectRows);
     tableView_->setSelectionMode(QAbstractItemView::SingleSelection);
     tableView_->horizontalHeader()->setStretchLastSection(true);
+    
+    // Set default column widths
+    tableView_->setColumnWidth(0, 180);  // Timestamp
+    tableView_->setColumnWidth(1, 150);  // Author
+    tableView_->setColumnWidth(2, 120);  // Subreddit
+    tableView_->setColumnWidth(3, 350);  // Snippet (large)
+    tableView_->setColumnWidth(4, 70);   // Type
+    tableView_->setColumnWidth(5, 80);   // AI Score
+    tableView_->setColumnWidth(6, 120);  // Labels
+    tableView_->setColumnWidth(7, 80);   // Status
+    tableView_->setColumnWidth(8, 280);  // Link (stretches to fill)
+    
     tableView_->setAlternatingRowColors(false);
     tableView_->setShowGrid(false);
     tableView_->verticalHeader()->setVisible(false);
@@ -600,8 +614,8 @@ void MainWindow::setupRedditScraperTab() {
     rightLayout->addWidget(detailCard);
     
     splitter->addWidget(rightWidget);
-    splitter->setStretchFactor(0, 2);
-    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 2);
     splitter->setHandleWidth(8);
     splitter->setStyleSheet(
         "QSplitter::handle { "
@@ -635,6 +649,18 @@ void MainWindow::setupConnections() {
     connect(toggleScrapingButton_, &QPushButton::clicked, this, &MainWindow::onToggleScraping);
     connect(tableView_->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::onTableSelectionChanged);
+    
+    // Handle clicks on the Link column to open Reddit posts
+    connect(tableView_, &QTableView::clicked, this, [this](const QModelIndex& index) {
+        // Column 8 is the Link column
+        if (index.column() == 8) {
+            QString url = index.data().toString();
+            if (!url.isEmpty() && url.startsWith("http")) {
+                QDesktopServices::openUrl(QUrl(url));
+            }
+        }
+    });
+    
     connect(railguardOverlay_, &RailguardOverlay::reviewRequested,
             this, &MainWindow::onReviewRequested);
     connect(railguardOverlay_, &RailguardOverlay::overrideAction,
