@@ -1,6 +1,6 @@
-# ModAI - Trust & Safety Dashboard
+# ModAI - AI Based Moderation and Guardrail Framework
 
-A professional Qt-based desktop application written in C++ that provides comprehensive content moderation capabilities including Reddit scraping, AI-powered chatbot functionality, AI-generated content detection, and real-time moderation workflows.
+A Qt-based desktop application written in C++ that provides comprehensive content moderation capabilities including Reddit scraping, AI-powered chatbot functionality, AI-generated content detection, and real-time moderation workflows.
 
 ## Features
 
