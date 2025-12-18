@@ -71,14 +71,30 @@ void AIImageDetectorPanel::setupUI() {
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
     
-    // Header - Simple title
+    // Header with title and description
+    auto* headerWidget = new QWidget;
+    auto* headerLayout = new QHBoxLayout(headerWidget);
+    headerLayout->setContentsMargins(8, 8, 8, 16);
+    headerLayout->setSpacing(12);
+    
     auto* headerLabel = new QLabel("AI Image Detector");
     QFont headerFont = headerLabel->font();
-    headerFont.setPointSize(14);
+    headerFont.setPointSize(20);
     headerFont.setBold(true);
     headerLabel->setFont(headerFont);
-    headerLabel->setStyleSheet("color: #2c3e50; padding: 4px;");
-    layout->addWidget(headerLabel);
+    headerLabel->setStyleSheet("color: #2c3e50;");
+    headerLayout->addWidget(headerLabel);
+    
+    auto* descLabel = new QLabel("Detect AI-generated images and check metadata for source information");
+    QFont descFont = descLabel->font();
+    descFont.setPointSize(10);
+    descLabel->setFont(descFont);
+    descLabel->setStyleSheet("color: #6c757d;");
+    descLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    headerLayout->addWidget(descLabel);
+    
+    headerLayout->addStretch();
+    layout->addWidget(headerWidget);
     
     // Main content area - horizontal split
     auto* contentWidget = new QWidget;
@@ -119,7 +135,7 @@ void AIImageDetectorPanel::setupUI() {
     resultsLayout->setSpacing(12);
     
     auto* resultsTitle = new QLabel("Results");
-    resultsTitle->setStyleSheet("font-weight: bold; color: #495057; font-size: 18px; padding-bottom: 6px;");
+    resultsTitle->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 16pt; border: none; background: transparent;");
     resultsLayout->addWidget(resultsTitle);
     
     // Result verdict
@@ -187,7 +203,7 @@ void AIImageDetectorPanel::setupUI() {
         "  color: white; "
         "  border: none; "
         "  border-radius: 8px; "
-        "  font-size: 14px; "
+        "  font-size: 16px; "
         "  font-weight: 600; "
         "}"
         "QPushButton:hover { "
@@ -210,7 +226,7 @@ void AIImageDetectorPanel::setupUI() {
         "  color: white; "
         "  border: none; "
         "  border-radius: 8px; "
-        "  font-size: 14px; "
+        "  font-size: 16px; "
         "  font-weight: 600; "
         "}"
         "QPushButton:hover { "
@@ -237,7 +253,7 @@ void AIImageDetectorPanel::setupUI() {
         "  color: white; "
         "  border: none; "
         "  border-radius: 8px; "
-        "  font-size: 14px; "
+        "  font-size: 16px; "
         "  font-weight: 600; "
         "}"
         "QPushButton:hover { "
@@ -573,7 +589,7 @@ void AIImageDetectorPanel::setTheme(bool isDark) {
             "  color: white; "
             "  border: none; "
             "  border-radius: 8px; "
-            "  font-size: 14px; "
+            "  font-size: 16px; "
             "  font-weight: 600; "
             "}"
             "QPushButton:hover { "
@@ -597,7 +613,7 @@ void AIImageDetectorPanel::setTheme(bool isDark) {
             "  color: white; "
             "  border: none; "
             "  border-radius: 8px; "
-            "  font-size: 14px; "
+            "  font-size: 16px; "
             "  font-weight: 600; "
             "}"
             "QPushButton:hover { "
