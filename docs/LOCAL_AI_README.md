@@ -47,12 +47,12 @@ cmake --build . -j$(nproc)
 
 ## Features
 
-✅ **Local inference** - No API calls, runs on your machine  
-✅ **Faster** - 100-200ms vs 1-3s for API calls  
-✅ **Private** - Data never leaves your computer  
-✅ **No rate limits** - Process unlimited texts  
-✅ **Smart fallback** - Uses API if local model unavailable  
-✅ **Easy setup** - One-time model export  
+- **Local inference** - No API calls, runs on your machine
+- **Faster** - 100-200ms vs 1-3s for API calls
+- **Private** - Data never leaves your computer
+- **No rate limits** - Process unlimited texts
+- **Smart fallback** - Uses API if local model unavailable
+- **Easy setup** - One-time model export  
 
 ## Architecture
 
